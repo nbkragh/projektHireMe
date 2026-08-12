@@ -1,0 +1,2 @@
+# projektHireMe
+LLM automated jobapplications
