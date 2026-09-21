@@ -407,7 +407,7 @@ eller er dokumenterede relevante kompetencer hos kandidaten.
 Opfind ikke erfaringer.
 
 Hard requirements:
-- Skriv på samme sprog som kildeteksterne
+- Skriv på samme sprog som det nye jobopslag.
 - Anvend samme tone og sproglige stil som i kildeteksterne.
 - Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
 - Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
@@ -648,9 +648,10 @@ def main() -> None:
     finally:
         conn.close()
 
-    if args.output:
-        args.output.write_text(result["few_shot_prompt"] + "\n", encoding="utf-8")
-        print(f"Resultat gemt i {args.output}")
+    outputfil = "generated_prompt.txt"
+
+    Path(outputfil).write_text(result["few_shot_prompt"] + "\n", encoding="utf-8")
+    print(f"Resultat gemt i {outputfil}")
 
     print(result)
 
