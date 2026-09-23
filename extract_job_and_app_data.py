@@ -52,7 +52,7 @@ except ImportError:
 
 LLMmodel=os.environ.get("OLLAMA_MODEL", "DEFAULT_MODEL")
 OllamaURL=os.environ.get("OLLAMA_URL")
-result_file=os.environ.get("EXTRACTED_SENTENCES_JSON", "extracted_sentences.json")
+result_file=os.environ.get("EXTRACTED_SENTENCES_JSON")
 eksport_root=os.environ.get("EKSPORT_ROOT")
 
 def extract_text_from_html(file_path: Path) -> list[str]:

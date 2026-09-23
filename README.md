@@ -38,7 +38,7 @@ Tidligere jobopslag sammen med de ansøgninger, jeg har sendt til dem, betragtes
 - NVIDIA GeForce RTX 3070
 - Internet 780 (Mbps)
 
-# Implementering:
+# Løsning:
 
 ## Pipeline:
 
@@ -54,10 +54,10 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder, som den pip
 - Upserter hver case, så allerede behandlede cases ikke duplikeres ved genkørsel.
 - Kanonisering: hver case og sætning kanoniseres med et stabilt id.
 - Regelbaseret rensning: fjerner kendte boilerplate-/rekrutteringsfraser fra både rå tekst og sætningslister.
+- Statistisk rensning: filtrerer sætninger der er unikt hyppige på tværs af hele tekstkorpusset (corpus-wide distinctiveness), via embedding + FAISS self-similarity search.
 
 **2. Semantic Chunking** ([afsnit](#sematisk-chunking))
-- Filtrerer sætninger der er unikt hyppige på tværs af hele tekstkorpusset, via embedding + FAISS self-similarity search.
-- Sammenlægger sætninger til semantisk sammenhængende paragraffer — igen via embedding + FAISS self-similarity search, denne gang mellem naboende sætninger.
+- Sammenlægger sætninger til semantisk sammenhængende paragraffer — via embedding + FAISS self-similarity search mellem naboende sætninger.
 - Opslagenes og ansøgningernes hele tekster og paragraffer indekseres relationelt.
 
 **3. Persistering i PostgreSQL (system-of-record)** ([afsnit](#persistering-i-postgresql))
@@ -95,33 +95,76 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder, som den pip
 
 #### Ingestion
 
-På dette stadie er dokumenterne allerede filfundet og tekstudtrukket — udfordringen er at normalisere og formatere dataen, så den opfylder de krav, resten af pipelinen stiller: entydige, rene, hele sætninger, gemt i en stabil rækkefølge (rækkefølgen bruges direkte i næste fase til at afgøre, hvilke sætninger der hører sammen i en paragraf).
+Som udgangspunkt er alle opslags- og ansøgningdokument-par allerede organiseret i egne mapper — udfordringen er at normalisere og formatere teksten i dokumenterne, så de opfylder de krav, resten af pipelinen stiller: entydige, rene, hele sætninger, gemt i en stabil rækkefølge.
+(rækkefølgen bruges direkte i næste fase til at afgøre, hvilke sætninger der hører sammen i en paragraf).
 
-**Teori.** En sætning lyder som en triviel enhed at få styr på, men fri tekst fra jobopslag og ansøgninger er fyldt med støj: overskrifter uden punktum, opremsninger, forkortelser, kontaktinfo midt i teksten. En simpel regex-splitter på `.`/`!`/`?` knækker let på forkortelser eller overspringer bullet-punkter uden slutpunktum. Derfor bruges her i stedet en lokal LLM til selve sætningsopdelingen — men *kun* til opdelingen, ikke til at omskrive eller opsummere teksten. For at gøre det output brugbart som data (ikke bare læsbar tekst) beder jeg Ollama om et strikt JSON-array af strings (`format`-skema) og sætter `temperature: 0.0`, så samme input konsekvent giver samme output — determinisme er en forudsætning for at kunne bygge en pipeline, man kan stole på og genkøre.
+**Teori.** Fri tekst fra jobopslag og ansøgninger er fyldt med støj: overskrifter uden punktum, opremsninger, forkortelser, kontaktinfo midt i teksten osv. 
+En simpel regex er ikke tilstrækkelig til at opdele en tekst i sætninger, f.eks. vil `.`/`!`/`?` knække let på forkortelser eller vil overspringe bullet-punkter uden slutpunktum. 
 
-**Ræsonnement — hvorfor en LLM og ikke bare rensning i kode.** Alternativet, en håndrullet regex/NLP-splitter, ville kræve at forudse enhver særskrivning i danske jobopslag (forkortelser, tal, bindestregs-sammensætninger). En LLM med en præcis instruktion generaliserer bedre til den slags uforudsete formatering — så længe instruktionen selv er præcis. Det viste sig at være en pointe i sig selv:
+Derfor bruges her i stedet en lokal LLM til selve sætningsopdelingen — men *kun* til opdelingen, ikke til at omskrive eller opsummere teksten. 
+Ollama kaldes til at prompte LLM modellen `hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL` med følgende prompt, hvor begrænsingerne er sat helt konkret og begrebet "sætning" er defineret:
 
-**Praktisk erfaring — "helsætning"-fælden.** Et konkret eksempel fra arbejdsforløbet: da prompten til Ollama første gang bad om at splitte teksten i "sætninger" uden at definere ordet, var modellens fortolkning af hvad der udgør én sætning (fx om en overskrift eller et enkelt bullet-punkt talte som "en sætning") uforudsigelig nok til at give enten for aggressiv eller for konservativ opdeling, samt lejlighedsvis ugyldig JSON. Løsningen var at gøre kravet eksplicit i selve prompten: en sætning er en komplet grammatisk enhed, der slutter med `.`, `?` eller `!`. Det er et lille eksempel på en større pointe, der går igen i hele projektet: ordvalget i en prompt er ikke kosmetik, det er kontraktdefinerende. Samtidig indeholder prompten en liste af eksplicitte udelukkelser — ingen tomme sætninger, ingen ren metadata, ingen URL'er, kontaktinfo, navne, adresser, telefonnumre eller emails — hver af dem en regel, der blev tilføjet fordi modellen ellers happily inkluderede dem.
+> """
+> OPGAVE:
+> Din opgave er at analysere og opdele det nedenstående TEKST-segment, så resultatet opfylder de VIGTIGE KRAV.
 
-**Udførelse.**
-- `extract_text_from_html()` / `extract_text_from_plain()` / `extract_text()`: en minimal `TextExtractor(HTMLParser)`-klasse, der kun samler tekst inden i `<p>`-tags og springer indhold i `<script>`/`<style>` over — enkel, men tilstrækkelig, da kildedokumenterne (PDF-eksporterede HTML-filer) konsekvent bruger `<p>` til brødtekst.
+> TEKST:
+> {`text`}
+
+> VIGTIGE KRAV:
+>- En sætning er en komplet grammatisk enhed, der giver semantisk mening alene, som er afsluttet med ".", "?" eller "!".
+>- Opdel teksten i TEKST-segmentet ovenfor i sætninger, 
+>- Sætningerne skal være trimmed for whitespace.
+>- returner teksten nøjagtigt som den fremstår i kilden, ingen ændringer eller fortolkninger.
+>- returner IKKE tomme sætninger 
+>- returner IKKE sætninger der kun indeholder whitespace.
+>- returner IKKE sætninger der indeholder metadata.
+>- returner IKKE sætninger der indeholder URL'er.
+>- returner IKKE sætninger der indeholder kontaktoplysninger.
+>- returner IKKE sætninger der indeholder personnavne.
+>- returner IKKE sætninger der indeholder adresser.
+>- returner IKKE sætninger der indeholder telefonnumre.
+>- returner IKKE sætninger der indeholder email-adresser.
+
+>AFLEVERING:
+>returner sætningerne i en valid json-liste
+>"""
+
+Med følgende Options:
+
+>json={
+>    "model": model,
+>    "prompt": prompt,
+>    "system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave er at analysere en given tekst og opdele den i sætninger",
+>    "stream": False,
+>    "format": {
+>        "type": "array",
+>        "items": {
+>            "type": "string"
+>        }
+>    },
+>    "options": {"temperature": 0.0},
+> },
+
+ Hvor `temperature: 0.0`, skruer helt ned for kreativiteten, så input konsekvent giver samme output — determinisme er en forudsætning for at kunne bygge en pipeline, man kan stole på og genkøre.
+ Og `"system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave ...` er System prompten
+
+**Ræsonnement — hvorfor en LLM og ikke bare rensning i kode.** Alternativet, en hardcoded regex/NLP-splitter, ville kræve at forudse enhver særskrivning i danske jobopslag (forkortelser, tal, bindestregs-sammensætninger), og rent praktisk kræve løbende udviddelse af splitting-regler. En LLM med en præcis instruktion generaliserer bedre til den slags uforudsete formatering — så længe instruktionen selv er præcis. 
+
+**Praktisk erfaring — "helsætning"-fælden.** Et konkret eksempel fra arbejdsforløbet: da prompten til Ollama første gang bad om at splitte teksten i "sætninger" uden at definere ordet "sætning", var modellens fortolkning af hvad der udgør én sætning (fx om en overskrift eller et enkelt bullet-punkt talte som "en sætning") uforudsigelig nok til at give enten for aggressiv eller for konservativ opdeling, samt lejlighedsvis ugyldig returneret JSON. 
+Løsningen var at gøre kravende så eksplicitte som muligt i selve prompten.
+
+**Implementering**
+- En minimal `TextExtractor(HTMLParser)`-klasse, der kun samler tekst marked-up `<p>`-tags.
 - `find_matching_files()`: rekursiv, case-insensitiv filsøgning via `fnmatch`-mønstre, bruges til at finde opslags- og ansøgningsfilen i hver case-mappe.
 - `build_extraction_prompt(text)`: bygger prompten med "hard requirements"-listen beskrevet ovenfor.
 - `call_ollama_segmentation()`: POST'er til Ollamas API med `format` sat til et JSON-array-skema og `options: {"temperature": 0.0}`; parser `response`-feltet som JSON og fejler eksplicit (med debug-print) hvis det ikke er gyldig JSON — bevidst fail-fast frem for at gætte på delvist output.
 - `process_case_folder(folder)`: orkestrerer én case-mappe — finder job-/app-fil, udtrækker tekst, kalder LLM-segmentering på begge, returnerer et case-objekt.
 - `load_existing_cases()` / `upsert_case()`: idempotent upsert-logik i JSON-filen, så en genkørsel ikke duplikerer allerede behandlede cases (matcher/overskriver på case-navnet).
 
-#### Sematisk Chunking
+**Regelbaseret og statistisk rensning + kanonisering (`clean_and_canonize.py`).**
 
-Kanonisering (case- og sætnings-id'er), embedding, chunking og støjfjernelse sker alt sammen i dette ene script — `cleanup_canonicalize_semanticchunkify.py` — selvom kanonisering og den regelbaserede rensning konceptuelt hører til Ingestion-fasen ovenfor.
-
-**Teori — vektor, embedding, cosine similarity.** En vektor er her ikke andet end en bestemt rækkefølge af tal, fx `[0.12, -0.45, 0.88, …]`. En embedding-model omdanner en hel sætning til præcis sådan én vektor — tekstens numeriske "fingeraftryk" i et flerdimensionelt rum, hvor tekster med lignende betydning ligger tæt på hinanden. Cosine similarity er afstanden mellem to sådanne vektorer udtrykt som en vinkel: når man L2-normaliserer vektorerne først (skalerer dem til længde 1), bliver et simpelt prikprodukt (`dot product`) mellem dem lig med cosine similarity — 1 betyder identisk retning (meget lignende), 0 betyder ingen sammenhæng. Dette "normalisér først, tag så dot product"-mønster går igen konsekvent i hele kodebasen (her, i `build_faiss_indexes.py`, og i `tag_assignment.py`) og er selve grunden til at FAISS-indekset senere kan bruge et almindeligt inner-product-indeks til at udregne cosine similarity.
-
-**Teori — hvorfor chunking, og hvorfor ikke arbitrær chunking.** Chunking betyder at dele lang tekst op i mindre stykker, så retrieval bliver mere præcist og LLM'ens kontekst mindre støjet af irrelevant indhold. Den mest almindelige RAG-tilgang er arbitrær chunking: fast antal tegn eller tokens pr. chunk, uafhængigt af indhold. Det er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — en fast tegn-vindue-chunking ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde.
-
-**v1 — naiv chunking + heldokument-embedding-match.** Det første forsøg embeddede hele dokumenter/paragraffer og matchede dem direkte. Det virkede — systemet fandt faktisk relevante uddrag fra databasen — men blandt de bedste matches optrådte også eksempler, der tydeligvis ikke var reelt relevante. Det afslørede en central indsigt: embedding som metode til at sammenligne tekst skal ikke gøres til mere, end det egentlig er — en kvantificering af *hele* teksten, intet mere, intet mindre. Den semantiske mening trækkes ud af modellen, men maskinen deler ikke nødvendigvis udviklerens eller brugerens opfattelse af, hvad der er semantisk vigtigt. Derfor fandt systemet tekster der "lød" ens, ikke kun tekster med sammenlignelige arbejdsopgaver — rekrutterings-lingoen ("vi tilbyder", "et godt arbejdsmiljø") lyder også ens på tværs af helt urelaterede jobopslag, og den tæller med i similarity-scoren, medmindre man enten fjerner fokus fra den (rensning) eller flytter fokus over på mere fagligt relevant mening (tags, se Berigelse).
-
-**Udførelse.**
+Selv efter LLM-sætningsopdelingen er teksten stadig fyldt med boilerplate — hilsner, kontaktoplysninger, rekrutterings-fraser — samt sætninger der er så generiske, at de går igen på tværs af helt urelaterede jobopslag. Denne rensning, sammen med tildelingen af stabile id'er til hver case, arbejder på de rå, endnu ikke grupperede sætninger og hører derfor konceptuelt til Ingestion, selvom den historisk lå i det senere chunking-script.
 
 `remove_phrases`-listen: en regex-liste over kendte danske rekrutterings-/boilerplate-fraser ("send os en ansøgning", telefonnumre, URL'er, "med venlig hilsen", "cpr-nummer", "frokostordning"/"massageordning"/"pensionsordning", ligestillings-boilerplate m.fl.) — en billig, regelbaseret første rensning, før den dyrere statistiske rensning nedenfor.
 
@@ -132,12 +175,28 @@ Kanonisering (case- og sætnings-id'er), embedding, chunking og støjfjernelse s
 - for hver sætning tælles, hvor mange forskellige cases der har en næsten-identisk match (similarity ≥ 0.85), og `distinctiveness = 1.0 - (antal matchende cases / samlet antal cases)`;
 - er en sætnings distinctiveness under 0.9, fjernes den — den er med andre ord for generisk/hyppig på tværs af hele korpusset til at være informativ (en statistisk, embedding-baseret udgave af samme idé som regex-listen ovenfor, blot uden en hardcodet fraseliste).
 
+`main()` læser `extracted_sentences.json` (`EXTRACTED_SENTENCES_JSON`), kører `cleanup()`, og skriver resultatet til `cleaned_sentences.json` (`CLEANED_SENTENCES_JSON`) — samme case-/sætningsstruktur som `paragraphize()` (næste fase) forventer som input.
+
+#### Sematisk Chunking
+
+Selve den semantiske paragraf-gruppering udføres i `cleanup_canonicalize_semanticchunkify.py`, som nu udelukkende indeholder `paragraphize()`. Kanonisering og rensning er flyttet til Ingestion-fasen ovenfor (`clean_and_canonize.py`), da de konceptuelt hører der, ikke fordi selve chunking-beregningen afhænger af dem.
+
+**Teori — vektor, embedding, cosine similarity.** En vektor er her ikke andet end en bestemt rækkefølge af tal, fx `[0.12, -0.45, 0.88, …]`. En embedding-model omdanner en hel sætning til præcis sådan én vektor — tekstens numeriske "fingeraftryk" i et flerdimensionelt rum, hvor tekster med lignende betydning ligger tæt på hinanden. Cosine similarity er afstanden mellem to sådanne vektorer udtrykt som en vinkel: når man L2-normaliserer vektorerne først (skalerer dem til længde 1), bliver et simpelt prikprodukt (`dot product`) mellem dem lig med cosine similarity — 1 betyder identisk retning (meget lignende), 0 betyder ingen sammenhæng. Dette "normalisér først, tag så dot product"-mønster går igen konsekvent i hele kodebasen (her, i `build_faiss_indexes.py`, og i `tag_assignment.py`) og er selve grunden til at FAISS-indekset senere kan bruge et almindeligt inner-product-indeks til at udregne cosine similarity.
+
+**Teori — hvorfor chunking, og hvorfor ikke arbitrær chunking.** Chunking betyder at dele lang tekst op i mindre stykker, så retrieval bliver mere præcist og LLM'ens kontekst mindre støjet af irrelevant indhold. Den mest almindelige RAG-tilgang er arbitrær chunking: fast antal tegn eller tokens pr. chunk, uafhængigt af indhold. Det er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — en fast tegn-vindue-chunking ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde.
+
+**v1 — naiv chunking + heldokument-embedding-match.** Det første forsøg embeddede hele dokumenter/paragraffer og matchede dem direkte. Det virkede — systemet fandt faktisk relevante uddrag fra databasen — men blandt de bedste matches optrådte også eksempler, der tydeligvis ikke var reelt relevante. Det afslørede en central indsigt: embedding som metode til at sammenligne tekst skal ikke gøres til mere, end det egentlig er — en kvantificering af *hele* teksten, intet mere, intet mindre. Den semantiske mening trækkes ud af modellen, men maskinen deler ikke nødvendigvis udviklerens eller brugerens opfattelse af, hvad der er semantisk vigtigt. Derfor fandt systemet tekster der "lød" ens, ikke kun tekster med sammenlignelige arbejdsopgaver — rekrutterings-lingoen ("vi tilbyder", "et godt arbejdsmiljø") lyder også ens på tværs af helt urelaterede jobopslag, og den tæller med i similarity-scoren, medmindre man enten fjerner fokus fra den (rensning) eller flytter fokus over på mere fagligt relevant mening (tags, se Berigelse).
+
+**Udførelse.**
+
 `paragraphize(cases_json, embeddingmodel)` — den semantiske sammenlægning af sætninger til paragraffer, i praksis en simpel "TextTiling"/discourse-segmenterings-tilgang:
 - `consecutive_semantic_coherence(embeddings)`: for hvert par af *naboende* sætnings-embeddings beregnes `dot(embeddings[i-1], embeddings[i])` — cosine similarity, da vektorerne allerede er L2-normaliserede. Resultatet er en talrække af "hvor sammenhængende er sætning i med sætning i-1".
 - `moving_average(values, smooth_window=5)`: glatter denne talrække med et centreret glidende gennemsnit, så enkeltstående støjdyk ikke udløser en unødvendig paragrafgrænse.
 - `find_local_minima(values, threshold)`: finder de indekser, hvor den glattede similarity-række har et lokalt minimum — et "knæk" hvor naboende sætninger pludselig er mindre similar end deres omgivelser. Et sådant knæk tolkes som grænsen mellem to meningsfulde paragraffer, fordi det er dér, emnet skifter.
 - `paragraphize_sentences(sentences, source, case_id)`: kæder det sammen — embedder sætningerne, beregner gaps, finder minima, og skærer sætningslisten i paragraffer ved disse grænsepunkter; hver paragraf får et `paragraph_id` som `c{n}_{job|app}_p{n}`.
 - Køres én gang for `job_sentences` og én gang for `app_sentences` pr. case; de flade sætningslister fjernes derefter fra case-objektet og erstattes af paragraf-strukturen.
+
+`main()` læser `cleaned_sentences.json` (`CLEANED_SENTENCES_JSON`, skrevet af `clean_and_canonize.py` ovenfor), kører `paragraphize()`, og skriver resultatet til `segmented_and_ready.json` (`SEGMENTED_AND_READY_JSON`).
 
 #### Berigelse
 
