@@ -30,7 +30,7 @@ import numpy as np
 import psycopg2
 from sentence_transformers import SentenceTransformer
 
-from cleanup_canonicalize_semanticchunkify import paragraphize
+from chunkify_semantic import paragraphize
 
 try:
     from dotenv import load_dotenv
