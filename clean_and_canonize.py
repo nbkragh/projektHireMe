@@ -42,6 +42,7 @@ remove_phrases = [
     r"(R|r)esumé",
     r"(J|j)ob application",
     r"(A|a)pplication form",
+    r"(S|s)enior",
     r"(R|r)eference letter",
     r"(R|r)ecommendation letter",
     r"(D|d)u kan læse mere"

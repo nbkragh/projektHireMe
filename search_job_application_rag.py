@@ -412,6 +412,7 @@ Hard requirements:
 - Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
 - Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
 - Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
+- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
 - Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
 - Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
 - Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
@@ -422,6 +423,10 @@ Hard requirements:
 - Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne
   ikke dokumenterer erfaringen. Opfind aldrig erfaring.
 
+Format:
+put <p></p> omkring afsnittene/paragrafferne i ansøgningsteksten.
+afslut
+med "<p>Med venlig hilsen, <br> Nicolai B. Kragh</p>"
 === NYT JOBOPSLAG ===
 Dette er det nye jobopslag, som kandidaten skal du skal skrive en ansøgning til for kandidaten:
 {query_text}

@@ -151,16 +151,8 @@ Med følgende Options:
 
 **Ræsonnement — hvorfor en LLM og ikke bare rensning i kode.** Alternativet, en hardcoded regex/NLP-splitter, ville kræve at forudse enhver særskrivning i danske jobopslag (forkortelser, tal, bindestregs-sammensætninger), og rent praktisk kræve løbende udviddelse af splitting-regler. En LLM med en præcis instruktion generaliserer bedre til den slags uforudsete formatering — så længe instruktionen selv er præcis. 
 
-**Praktisk erfaring — "helsætning"-fælden.** Et konkret eksempel fra arbejdsforløbet: da prompten til Ollama første gang bad om at splitte teksten i "sætninger" uden at definere ordet "sætning", var modellens fortolkning af hvad der udgør én sætning (fx om en overskrift eller et enkelt bullet-punkt talte som "en sætning") uforudsigelig nok til at give enten for aggressiv eller for konservativ opdeling, samt lejlighedsvis ugyldig returneret JSON. 
+**Praktisk erfaring — "helsætning"-fælden.** Et konkret eksempel fra arbejdsforløbet: da prompten til Ollama i en tidlige iteration bad om at splitte teksten i "sætninger" uden at definere ordet "sætning", var modellens fortolkning af hvad der udgør én sætning (fx om en overskrift eller et enkelt bullet-punkt talte som "en sætning") uforudsigelig nok til at give enten for aggressiv eller for konservativ opdeling, samt lejlighedsvis ugyldig returneret JSON. 
 Løsningen var at gøre kravende så eksplicitte som muligt i selve prompten.
-
-**Implementering**
-- En minimal `TextExtractor(HTMLParser)`-klasse, der kun samler tekst marked-up `<p>`-tags.
-- `find_matching_files()`: rekursiv, case-insensitiv filsøgning via `fnmatch`-mønstre, bruges til at finde opslags- og ansøgningsfilen i hver case-mappe.
-- `build_extraction_prompt(text)`: bygger prompten med "hard requirements"-listen beskrevet ovenfor.
-- `call_ollama_segmentation()`: POST'er til Ollamas API med `format` sat til et JSON-array-skema og `options: {"temperature": 0.0}`; parser `response`-feltet som JSON og fejler eksplicit (med debug-print) hvis det ikke er gyldig JSON — bevidst fail-fast frem for at gætte på delvist output.
-- `process_case_folder(folder)`: orkestrerer én case-mappe — finder job-/app-fil, udtrækker tekst, kalder LLM-segmentering på begge, returnerer et case-objekt.
-- `load_existing_cases()` / `upsert_case()`: idempotent upsert-logik i JSON-filen, så en genkørsel ikke duplikerer allerede behandlede cases (matcher/overskriver på case-navnet).
 
 **Regelbaseret og statistisk rensning + kanonisering (`clean_and_canonize.py`).**
 
@@ -178,25 +170,35 @@ Selv efter LLM-sætningsopdelingen er teksten stadig fyldt med boilerplate — h
 `main()` læser `extracted_sentences.json` (`EXTRACTED_SENTENCES_JSON`), kører `cleanup()`, og skriver resultatet til `cleaned_sentences.json` (`CLEANED_SENTENCES_JSON`) — samme case-/sætningsstruktur som `paragraphize()` (næste fase) forventer som input.
 
 #### Sematisk Chunking
+**Teori — vektor, embedding, cosine similarity.** 
+En grundlæggende problemstilling inden for sprogteknologi (Natural Language Processing (NLP)) og LLM teknologien er hvordan man repræsenterer en tekst numerisk, så *den meningsfulde sammenhæng* mellem tekstens enkelte dele bevares, og en computer kan regne på den.
+Det er nemt nok at give alle bogstaver alfabetet en unik numerisk værdi, at *kvantificere* dem; en simpel måde er f.eks. at give dem alle sin egen unikke talrepræsentation, hvor a = 1, b = 2 osv. her vil alle unikke ord få en unik talkombination. Men det hjælper ikke på at kunne "regne ud" hvilken kombination af ord, der sammen giver mening i en tekst.
+Bogstaver er, udover enkeltbogstavsord som "i" "å" og "ø", ikke meningsbærende i sig selv. Den mindste enhed af mening i en tekst er for mennesker *ord*,  for LLM'er er det *tokens*, som også inkluderer hele ord fra ordbogen, men også ord-bidder, dele af ord, som går igen i et sprog f.eks. gramatiske endelser og "for-", "til-" og "af-" på dansk. Det er lettest at forstå *tokens*=*ord*, selv om det er en forsimpling af tingene. 
 
-Selve den semantiske paragraf-gruppering udføres i `cleanup_canonicalize_semanticchunkify.py`, som nu udelukkende indeholder `paragraphize()`. Kanonisering og rensning er flyttet til Ingestion-fasen ovenfor (`clean_and_canonize.py`), da de konceptuelt hører der, ikke fordi selve chunking-beregningen afhænger af dem.
+Kvantificeringen af disse tokens, eller ord om man vil, går ud på at tillægge allesammen en unik vektor. 
+Hvis læseren ikke kender begrebet *vektor*, så kan det være tilstrækkeligt at forstå en vektor som en samling af tal i en bestemt rækkefølge, fx `[0.12, -0.45, 0.88, …]` eller `[-0.67, 57.11, 40.01, …]`.
+Dette er et alsidigt matematisk redskab, som i denne her sammenhæng bruges til at tillægge en token grader af forskellige *egenskaber*, hvert tal i vektoren angiver simpelthen hvor meget denne token bærer en vis egenskab. 
+Disse egenskaber er resultatet af at embbeddingmodellen er blevet trænet på helt vilde mængder tekst, og har fundet, at der gennemgående er noget der statistisk set gentager sig ved brugen af disse ord i tekster, mao. hvordan ordene relaterer sig til hinanden i en tekst, ikke ordene i sig selv. Et godt intuitivt eksempel er de egenskaber der går igen i ordene "mand" "husbond" og "konge" og dem der går igen i "kvinde" "kone" og "dronning". Nogle egenskaber går igen i højere grad blandt nogle ord, men i lavere grad i andre ord. Disse egenskaber er repræsenteret af en eller flere tal-positioner i ordenes vektor, og jo mere meningsmæssigt en token er lig en anden token jo tættere er tallenes indbyrdes forhold. Men egenskaberen er ikke nødvendigvis særligt forståelige for mennesker, som i eksemplet ovenfor, de skal bare være statistisk signifikante for at kunne bevare mening.
 
-**Teori — vektor, embedding, cosine similarity.** En vektor er her ikke andet end en bestemt rækkefølge af tal, fx `[0.12, -0.45, 0.88, …]`. En embedding-model omdanner en hel sætning til præcis sådan én vektor — tekstens numeriske "fingeraftryk" i et flerdimensionelt rum, hvor tekster med lignende betydning ligger tæt på hinanden. Cosine similarity er afstanden mellem to sådanne vektorer udtrykt som en vinkel: når man L2-normaliserer vektorerne først (skalerer dem til længde 1), bliver et simpelt prikprodukt (`dot product`) mellem dem lig med cosine similarity — 1 betyder identisk retning (meget lignende), 0 betyder ingen sammenhæng. Dette "normalisér først, tag så dot product"-mønster går igen konsekvent i hele kodebasen (her, i `build_faiss_indexes.py`, og i `tag_assignment.py`) og er selve grunden til at FAISS-indekset senere kan bruge et almindeligt inner-product-indeks til at udregne cosine similarity.
+Dette er et forsøg på at forklare overordnet den grundlæggende kvantificeringen af tekst, kaldt embedding, hvor altså teksten deles op og lægges i vektorer. En hel tekst, altså en rækkefølge af tokens, kan også repræsenteres af en enkelt vektor, som er udregnet fra hver af dens tokens vektorer. Så en teksts egen vektor er altså udrenget fra alle dens tokens vektorer. 
+For en bestemt embeddingmodel har vektorene, som den anvender, et bestemt antal tal, en bestemt længde.  
+I dette har projekt har jeg anvendt en embeddingmodel der hedder `paraphrase-multilingual-MiniLM-L12-v2`, som anvender vektorer, der er 384 tal lange, den har 384 dimensioner, som det kaldes. Det er en lille en af slagsen, som jeg har valgt netop fordi jeg prøver at køre så meget af systemet lokalt på min egen computer. Der findes også embeddingmodeller med vektorer der har 3072 dimensioner. 
 
-**Teori — hvorfor chunking, og hvorfor ikke arbitrær chunking.** Chunking betyder at dele lang tekst op i mindre stykker, så retrieval bliver mere præcist og LLM'ens kontekst mindre støjet af irrelevant indhold. Den mest almindelige RAG-tilgang er arbitrær chunking: fast antal tegn eller tokens pr. chunk, uafhængigt af indhold. Det er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — en fast tegn-vindue-chunking ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde.
+Embeddingmodeller bruges til at kvantificere tekst, et trin der også kaldes encoding, så en computer kan sammenligne dens meningsfulde lighed med andre teksters; de udgør dog ikke i sig selv hele generative LLM'er, men encoding indgår også som et trin inde i en generativ LLM. Generative LLM'er som Claude og ChatGPT har et internt trin der omsætter tokens til vektorer, men det er trænet sammen med resten af modellen som én helhed, i modsætning til den her anvendte, separat trænede embeddingmodel. I den anden ende af sådanne en generative LLM-modeler bliver tal løbende omsat til tokens og dermed tekst igen, det trin kaldes så decoding. Givet en kvantificeret tekst, skal den generativ LLM-model regne ud hvad den mest sandsynlige næste token bør være for at tekstens mening bevares.
+
+En embeddingmodel kan altså ikke generere tekst, den kan kun analysere deres statistiske lighed, deres semantiske mening. Men fordi den
+netop er kvantificeret i vektorer, det er bare en masse tal, så kan man regne ud hvor meget de meningsmæssigt minder om hinanden. 
+Den mest gængse udregning af ligheden kaldes cosinus-lighed, på engelsk *cosine similarity*, som kommer af, at inden for geometri, der kan vektorer beskrives som at være en længde med en retning i et koordinatsystem. Hvad har "længder", "retninger" og "koordinatsystemer" med semantisk mening at gøre? Jo, hvis vi forestiller os, at man skulle plotte ord ind i på et kort over mening, så er det oplagt at jo mere ord ligner hinanden, jo tættere vil de være placeret på et kort, som man jo aflæser med et koordinatsystem, og det er lige netop det, der er tilfældet med embedding af tekst, lighed er nærhed i koordinatsystemet. En vektors retning og længde er afgjort af tallene, som den består af, og de tal angiver, som beskrevet ovenfor egenskaber ved ordet eller sætningen, som tilsammen udgør den semantiske mening.
+Vi er dog kun interesseret i retningen af vektorerne, for længden af en vektor, nemlig hvor store tallene er i den, siger mere om hvor lang teksten er end den egentlige mening som den bære på. Retningen afgøres af de indbyrdes forhold mellem alle tallene i vektoren.
+For at "omforme" to teksters, eller ord (tokens), vektor så længden er ligegyldig, så *normaliserer* dem, de får samme længde, og kun retningen er til forskel. Hvis man så betragter de to vektorer som to lige lange linier, der starter i 0 i koordinatsystemet, så vil vinklen
+mellem dem, hvor meget de peger i samme retning, indikerer hvor meget tallene, altså egenskaberne, altså den semantiske mening ligner hinanden.
+
+
+**Teori — hvorfor semantisk chunking, og hvorfor ikke arbitrær chunking.** Chunking betyder at dele lang tekst op i mindre stykker, så retrieval bliver mere præcist og LLM'ens kontekst mindre støjet af irrelevant indhold. Den mest almindelige RAG-tilgang er arbitrær chunking: fast antal tegn eller tokens pr. chunk, uafhængigt af indhold. Det er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — en fast tegn-vindue-chunking ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde.
 
 **v1 — naiv chunking + heldokument-embedding-match.** Det første forsøg embeddede hele dokumenter/paragraffer og matchede dem direkte. Det virkede — systemet fandt faktisk relevante uddrag fra databasen — men blandt de bedste matches optrådte også eksempler, der tydeligvis ikke var reelt relevante. Det afslørede en central indsigt: embedding som metode til at sammenligne tekst skal ikke gøres til mere, end det egentlig er — en kvantificering af *hele* teksten, intet mere, intet mindre. Den semantiske mening trækkes ud af modellen, men maskinen deler ikke nødvendigvis udviklerens eller brugerens opfattelse af, hvad der er semantisk vigtigt. Derfor fandt systemet tekster der "lød" ens, ikke kun tekster med sammenlignelige arbejdsopgaver — rekrutterings-lingoen ("vi tilbyder", "et godt arbejdsmiljø") lyder også ens på tværs af helt urelaterede jobopslag, og den tæller med i similarity-scoren, medmindre man enten fjerner fokus fra den (rensning) eller flytter fokus over på mere fagligt relevant mening (tags, se Berigelse).
 
-**Udførelse.**
 
-`paragraphize(cases_json, embeddingmodel)` — den semantiske sammenlægning af sætninger til paragraffer, i praksis en simpel "TextTiling"/discourse-segmenterings-tilgang:
-- `consecutive_semantic_coherence(embeddings)`: for hvert par af *naboende* sætnings-embeddings beregnes `dot(embeddings[i-1], embeddings[i])` — cosine similarity, da vektorerne allerede er L2-normaliserede. Resultatet er en talrække af "hvor sammenhængende er sætning i med sætning i-1".
-- `moving_average(values, smooth_window=5)`: glatter denne talrække med et centreret glidende gennemsnit, så enkeltstående støjdyk ikke udløser en unødvendig paragrafgrænse.
-- `find_local_minima(values, threshold)`: finder de indekser, hvor den glattede similarity-række har et lokalt minimum — et "knæk" hvor naboende sætninger pludselig er mindre similar end deres omgivelser. Et sådant knæk tolkes som grænsen mellem to meningsfulde paragraffer, fordi det er dér, emnet skifter.
-- `paragraphize_sentences(sentences, source, case_id)`: kæder det sammen — embedder sætningerne, beregner gaps, finder minima, og skærer sætningslisten i paragraffer ved disse grænsepunkter; hver paragraf får et `paragraph_id` som `c{n}_{job|app}_p{n}`.
-- Køres én gang for `job_sentences` og én gang for `app_sentences` pr. case; de flade sætningslister fjernes derefter fra case-objektet og erstattes af paragraf-strukturen.
-
-`main()` læser `cleaned_sentences.json` (`CLEANED_SENTENCES_JSON`, skrevet af `clean_and_canonize.py` ovenfor), kører `paragraphize()`, og skriver resultatet til `segmented_and_ready.json` (`SEGMENTED_AND_READY_JSON`).
 
 #### Berigelse
 
@@ -208,23 +210,15 @@ Efter v1's diagnose (embedding alene finder tekster der lyder ens, ikke nødvend
 
 Spørgsmålet et tag besvarer er: *"Handler disse to tekster overhovedet om samme emne/domæne?"* (Python vs. cybersikkerhed vs. salg) — et diskret, kategorisk svar, robust over for stilforskelle. Et tag som "programmeringssprog" er sandt, uanset om teksten er formuleret som et krav i et opslag eller som en erfaring i en ansøgning — hvor embedding-similarity ville kunne variere en del bare på formuleringens stil.
 
-- Henter alle tags + seed-eksempler fra Postgres, og indlæser `tags_taxonomy.json` (top-kategorier → tags → `seed_examples`) som kilden til, hvilke tags der overhovedet findes.
-- Bygger én **prototype-embedding** pr. tag: i stedet for at gemme mange arbitrære eksempeltekster pr. tag, embeddes et lille antal håndskrevne "seed"-sætninger, og deres embeddings L2-normaliseres og gennemsnitliggøres (og renormaliseres) til én enkelt, repræsentativ vektor pr. tag.
-- Henter alle dokumenter og paragraffer (job/app) fra Postgres som "targets" og embedder dem.
-- Beregner cosine similarity mellem hver target og alle tag-prototyper, grupperet pr. top-kategori, og beholder kun top-k tags pr. kategori over en minimumsscore — en tekst kan altså få flere tags samtidig, fx ét inden for "teknisk_kompetence" og ét inden for "virksomhedskultur".
-- Sideværktøj: `evaluate_tag_seed_similarity.py` bruger nøjagtig samme mekanik (seed-embeddings mod tekst-embeddings), men udelukkende til at diagnosticere og finjustere selve taksonomien — fx opdage om to seeds ligger for tæt på eller for langt fra hinanden — og er bevidst ikke en del af selve produktionspipelinen.
 
-*Funktionsgennemgang (`tag_assignment.py`):* `fetch_tags_from_db()` henter tags+seeds; `build_tag_prototypes()` udfører "normalisér-gennemsnit-renormalisér"-beregningen ovenfor; `fetch_targets()` samler alle job/app-dokumenter og -paragraffer i én flad `(target_type, target_id, text)`-liste; `embed_texts()` embedder og L2-normaliserer; `assign_tags_to_embeddings()` beregner hele similarity-matricen (alle targets × alle tags) i ét `matmul`, og udvælger top-k pr. kategori over min_score; `persist_text_tags()`/`persist_all_text_tags()` skriver rækkerne til `text_tags`.
 
 **embedding similarity matching.**
 
 Spørgsmålet embedding-similarity besvarer, når to tekster allerede er inden for samme case, er anderledes end tag-matchets: *"Hvor specifikt/stærkt besvarer denne ene sætning netop dette ene krav?"* — en kontinuerlig score, der fanger nuancer inden for samme tag-kategori. To tekster kan begge være tagget "Python-erfaring", men "5 års Python-erfaring i finansielle systemer" matcher alligevel bedre til et FinTech-Python-krav end "lidt Python i et skoleprojekt" — den forskel fanges kun af den kontinuerlige similarity-score, ikke af tagget alene.
 
-- Beregner embedding-similarity mellem alle job- og app-paragraffer **inden for samme case**, og gemmer top-N (default 3) bedste ansøgnings-matches pr. jobparagraf i `job_app_paragraph_matches` — den forudberegnede "krav → mit svar"-kobling, som senere slås op direkte ved query-tid i stedet for at blive genberegnet.
 
 **Ræsonnement — hvorfor kun inden for samme case.** At begrænse denne beregning til én case ad gangen (ikke hele korpusset) er bevidst: antagelsen er, at inden for én allerede matchet case er en jobparagraf og den/de sætninger i den tilhørende ansøgning, der besvarer netop det krav, den mest pålidelige grundsandhed, systemet har til rådighed — fordi et menneske (mig selv) faktisk brugte den ansøgning til at besvare netop det opslag.
 
-*Funktionsgennemgang (`persist_texts_paragraphs.py::persist_paragraph_matches()`):* pr. case embeddes alle `job_paragraphs` og `app_paragraphs`, normaliseres manuelt med numpy (`vectors /= np.clip(norm, 1e-8, None)` — clip'et undgår division med nul for en evt. nul-vektor), og hele similarity-matricen beregnes i ét `job_vectors @ app_vectors.T`; for hver jobparagraf udvælges de top-N app-paragraffer med højest score via `np.argsort(...)[::-1][:top_n]`, og gemmes med en `rank`.
 
 
 #### Persistering i PostgreSQL
@@ -243,25 +237,6 @@ Nogle felter i skemaet — fx `tags_json`/`style_signals_json` på `job_paragrap
 - `text_tags` — den polymorfe kobling mellem en hvilken som helst tagget tekstenhed (`target_type`/`target_id`) og et tag, med score og `rank_in_category`.
 - `faiss_id_map` — bro-tabellen mellem en FAISS-indeksposition og den oprindelige Postgres-række (se næste fase).
 
-```mermaid
-erDiagram
-    cases ||--o| job_documents : has
-    cases ||--o| app_documents : has
-    cases ||--o{ job_paragraphs : has
-    cases ||--o{ app_paragraphs : has
-    job_paragraphs ||--o{ job_app_paragraph_matches : "matches ->"
-    app_paragraphs ||--o{ job_app_paragraph_matches : "<- matched by"
-    tags ||--o{ tag_seeds : has
-    tags ||--o{ text_tags : "assigned via"
-    faiss_id_map }o--|| job_documents : "points to (one of 4 collections)"
-```
-
-**Udførelse.**
-
-- `persist_tags_taxonomy.py`: upserter tags/seeds fra `tags_taxonomy.json` og rydder op i tags/seeds der ikke længere findes i filen (`DELETE ... WHERE NOT (tag_key = ANY(%s))`), så databasen aldrig driver væk fra taksonomi-filen.
-- `persist_texts_paragraphs.py`: upserter `cases`, `job_documents`/`app_documents`, `job_paragraphs`/`app_paragraphs`, og kalder derefter `persist_paragraph_matches()` (se Berigelse) for at fylde `job_app_paragraph_matches`.
-- `tag_assignment.py`: opretter `tags`/`tag_seeds`/`text_tags`, og gemmer det endelige resultat af tagging-fasen i `text_tags`.
-
 
 #### FAISS-indeksering
 
@@ -273,16 +248,6 @@ erDiagram
 
 **Ræsonnement — hvorfor fire separate indeks.** I stedet for ét stort, fælles indeks bygges der fire adskilte collections: `job_documents`, `app_documents`, `job_paragraphs`, `app_paragraphs`. Det er en direkte konsekvens af v1's erfaring (se Semantisk Chunking): blander man jobopslag og ansøgninger, eller hele dokumenter og paragraffer, i samme indeks, kan genre og længde dominere similarity-scoren frem for reel faglig relevans. Adskilte collections pr. (dokumenttype × granularitet) sikrer, at sammenligninger altid sker "samme genre mod samme genre".
 
-**Udførelse.**
-
-- `COLLECTIONS`-dict'en kobler hver af de fire collections til dens Postgres-tabel og tekstkolonne.
-- `fetch_rows()`: henter `(id, text)` i stabil rækkefølge (`ORDER BY id`) — rækkefølgen er vigtig, fordi en rækkes FAISS-position bogstaveligt er dens plads i denne liste (0, 1, 2, …).
-- `embed_texts()`: batch-encoder med SentenceTransformer, caster til `float32` (FAISS' forventede datatype), og L2-normaliserer.
-- `persist_index()`: bygger et frisk `IndexFlatIP(dim)`, tilføjer alle vektorer, skriver det atomisk til disk (skriv til en `.tmp`-fil, derefter `os.replace` — undgår nogensinde at efterlade en halvskrevet indeksfil, hvis processen dør midt i skrivningen), og genskriver derefter `faiss_id_map` for den collection: sletter gamle rækker og indsætter `(collection, source_table, source_id, faiss_index, embedding_model)`, så hver FAISS-position 0..N-1 kan spores tilbage til en Postgres-række.
-- `ensure_faiss_id_map()`: opretter mapping-tabellen hvis den mangler, med unikke constraints på både `(collection, faiss_index)` og `(collection, source_table, source_id)` — for at forhindre dubletter eller forældreløse mappinger.
-- `build_indexes()`: kører de fire collections igennem, én ad gangen.
-
-
 ### QUERY time
 
 #### retrieval
@@ -293,34 +258,18 @@ To granulariteter bruges parallelt: **dokument-niveau** ("hvilken af mine tidlig
 
 **Ræsonnement — diversitets-udvælgelse.** Uden yderligere filtrering kunne de bedste tag-overlap/vector-score-matches alle stamme fra samme jobparagraf eller samme tema — hvilket ville gøre de endelige few-shot-eksempler i prompten repetitive og skæve mod ét emne i stedet for at dække det nye opslags flere forskellige krav. Da antallet af paragraf-eksempler, prompten har råd til, er begrænset (jf. context-window-budgettet nedenfor), skal hver "plads" i prompten helst dække et *forskelligt* krav frem for nær-dubletter af samme krav. Løsningen: gruppér kandidatpar efter `job_paragraph_id`, behold kun distinkte jobparagraffer (rangeret efter `job_tag_overlap` → `vector_score`), og vælg for hver af dem uafhængigt den bedst matchende app-paragraf (efter `app_tag_overlap` → `mapping_score` → `vector_score`).
 
-**Ræsonnement — kompetence-matching ved siden af tag/embedding.** Tag- og embedding-laget er bevidst fuzzy og probabilistisk — en styrke, fordi det generaliserer til formuleringer, systemet ikke har set før, men en svaghed, hvis man skal *garantere*, at et specifikt, konkret ord (fx "Kubernetes" eller "Scrum") bliver genkendt som til stede. En lille, håndholdt, deterministisk keyword-liste (`kompetencer_og_erfaringer_tags.txt`) lukker det hul: den giver LLM'en en eksplicit, forsvarlig "whitelist" af ord, den må bruge — samme guardrail-tankegang som i Promptgenerering, blot fra den modsatte vinkel: i stedet for kun at *forbyde* opdigtede ord, *licenserer* denne liste aktivt de ord, der reelt findes i det nye opslag.
-
-Dansk sammensætning og bøjning håndteres pragmatisk i stedet for med en fuld lemmatizer: danske sammensatte ord skrives sammen uden mellemrum eller bindestreg ("softwareudvikling" indeholder "udvikling"), så en substring-match på en whitespace-/tegn-renset, casefoldet streng fanger de fleste tilfælde billigt, suppleret med simple ental/flertal-varianter (fx afprøv både med og uden trailing "-er"/"-s").
-
-**Funktionsgennemgang (`search_job_application_rag.py`).**
-
-- `split_sentences()`: en let regex-baseret sætningssplitter for query-teksten (bruges før teksten sendes gennem den *samme* `paragraphize()` som ved ingestion).
-- `make_query_paragraphs()`: pakker inputteksten ind i et falsk, enkelt "case"-objekt der matcher den form, `paragraphize()` forventer — så nøjagtig samme semantiske chunking-logik fra fase 2 håndterer det nye, usete opslag.
-- `find_competency_matches()`: normaliserer kompetencelisten (casefold, tegnoprydning, simpel ental/flertal-variantgenerering) og substring-matcher varianterne mod en tilsvarende renset udgave af query-teksten.
-- `fetch_competency_app_paragraphs()`: et SQL `LIKE`-opslag (bygget af samme normaliserede varianter) mod `app_paragraphs`, sorteret efter tekstlængde stigende — det korteste, mest præcise matchende eksempel vinder først, hvilket holder disse few-shot-eksempler korte (jf. context-budget).
-- `load_query_tags()`: genberegner tag-prototyper on-the-fly fra Postgres (samme matematik som `tag_assignment.build_tag_prototypes`) og vælger top-k tags pr. kategori for den nye tekst.
-- `fetch_faiss_hits()`: den generiske FAISS→Postgres-bro — søger et indeks, og slår derefter hver hit-position op i `faiss_id_map` for at oversætte den tilbage til en reel `(tabel, id)`.
-- `fetch_document_hit()` / `fetch_paragraph_hit()` / `fetch_tags()` / `fetch_mapped_app_paragraphs()`: tynde Postgres-opslag der "hydrerer" FAISS-hits til faktisk tekst, tags og forudberegnede matches.
-- `search()`: den orkestrerende funktion — samler query-paragraffer, kompetence-matches og query-tags; søger `job_documents`-indekset (dokument-niveau, reranket efter tag_overlap/vector_score); søger `job_paragraphs`-indekset pr. query-paragraf; slår forudberegnede app-match-kandidater op pr. hit; grupperer alle kandidater efter `job_paragraph_id`; udvælger for hver gruppe den bedste job-side (`job_tag_overlap`, `vector_score`) og den bedste app-side (`app_tag_overlap`, `mapping_score`, `vector_score`) uafhængigt af hinanden; sorterer og skærer til `paragraph_k`.
-
+**Ræsonnement — kompetence-matching ved siden af tag/embedding.** Tag- og embedding-laget er bevidst fuzzy og probabilistisk — en styrke, fordi det generaliserer til formuleringer, systemet ikke har set før, men en svaghed, hvis man skal *garantere*, at et specifikt, konkret ord (fx "Kubernetes" eller "Scrum") bliver genkendt som til stede. En lille, håndholdt, deterministisk keyword-liste (`kompetencer_og_erfaringer_tags.txt`) lukker det hul: den giver LLM'en en eksplicit, forsvarlig "whitelist" af ord, den må bruge — samme guardrail-tankegang som i Promptgenerering, blot fra den modsatte vinkel: i stedet for kun at *forbyde* opdigtede ord, *tillader* denne liste aktivt de ord, der reelt findes i det nye opslag.
 
 #### promptgenerering
 
 **Teori — context window og token-budget.** Hver eneste bid, der er hentet frem ovenfor (kompetenceliste, korte kompetence-eksempler, hele dokumenter, paragrafpar), konkurrerer om det samme token-budget i prompten. En LLM's kontekstvindue er ikke uendeligt, og indhold placeret midt i en meget lang prompt har en dokumenteret tendens til at blive "glemt" eller vægtet lavere af modellen ("lost in the middle") sammenlignet med indhold i starten eller slutningen. Det er den direkte begrundelse for, at `document_k` som standard er sat lavt (1) og `paragraph_k` moderat (5) — ikke fordi flere eksempler ikke kunne være nyttige i teorien, men fordi hvert ekstra eksempel har en pris i kontekstplads og opmærksomhed.
+I Ollama klienten kan man sætte "Context length" under Settings, hvor jeg nu har den til maks, fordi 
+de prompt jeg får genereret pt. er meget tekst tunge og dermed indeholder mange tokens. Dette bør på sigt optimeres.
 
-**Ræsonnement — guardrails mod hallucination.** "Hard requirements"-blokken i `build_prompt()` er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal eksplicit fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. Konkrete regler i den nuværende prompt — aldrig brug tankestreger (—), undgå omstændelige metaformuleringer som "stillingen kombinerer noget, jeg er motiveret af", undgå spejlende fraser som "det matcher jeres behov", undgå selvnedvurderende formuleringer som "jeg kommer ikke med en tung profil" — er hver især eksempler på prompt-engineering-ved-iteration: regler der blev tilføjet, fordi LLM'en produktivt gentog et bestemt uønsket mønster, indtil det blev forbudt eksplicit. Det er samme kategori af erfaring som "helsætning"-historien fra Ingestion, bare opdaget senere i pipelinen.
+**Ræsonnement — guardrails mod hallucination.** "Hard requirements"-blokken i `build_prompt()` er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal eksplicit fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. 
 
 Guardrailen har to sider, der begge er med: et *forbud* (opfind aldrig teknologier/kompetencer/erfaring, der ikke er dokumenteret i kildeteksterne) og en *tilladelse* (den eksplicitte kompetence-whitelist fra retrieval-fasen, som aktivt licenserer bestemte ord). Det er værd at være ærlig om, at den content/style/rejected-tredeling, der oprindeligt var tanken bag guardrails, i den nuværende implementering udmøntes som tekstlige instruktioner i prompten frem for som en bogstavelig tredelt eksempel-struktur.
 
-**Funktionsgennemgang.**
-
-- `build_prompt()`: ren strengsammensætning — sætter `full_document_examples` sammen til blokke af "tidligere opslag + tidligere ansøgning", `paragraph_examples` til krav→svar-par, `competency_matches` til en punktopstilling (med et eksplicit fallback-linje hvis listen er tom: "Ingen direkte kompetence-match fundet."), og `competency_app_paragraphs` til korte eksempler — alt sammen pakket ind i den faste instruktions-skabelon med de navngivne sektioner (`=== NYT JOBOPSLAG ===`, `=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===`, osv.).
-- `main()`: CLI-indgangspunktet — læser jobtekstfilen, indlæser embedding-modellen én gang, åbner Postgres-forbindelsen, kalder `search()`, og skriver `result["few_shot_prompt"]` til `generated_prompt.txt`.
 
 
 #### Fremtidigt / endnu ikke implementeret
