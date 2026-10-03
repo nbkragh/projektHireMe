@@ -415,6 +415,7 @@ Hard requirements:
 - Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
 - Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
 - Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
+- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
 - Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
 - Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
 - Fremhæv dokumenterede styrker neutralt og uden forbehold.
@@ -422,6 +423,7 @@ Hard requirements:
   når de er relevante og kan dokumenteres i kandidatens kildetekster.
 - Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne
   ikke dokumenterer erfaringen. Opfind aldrig erfaring.
+- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
 
 Format:
 put <p></p> omkring afsnittene/paragrafferne i ansøgningsteksten.
