@@ -40,7 +40,8 @@ except ImportError:
 
 from sentence_transformers import SentenceTransformer
 
-from OLD.build_FAISS_and_populate_DB import POSTGRESQL_DSN, EMBEDDING_MODEL_PATH
+POSTGRESQL_DSN = os.environ.get("POSTGRES_DSN")
+EMBEDDING_MODEL_PATH = os.environ.get("EMBEDDING_MODEL")
 
 
 # Standard: hvor mange tags en tekst maksimalt kan få PR. top-kategori, og

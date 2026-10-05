@@ -63,25 +63,23 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipe
 - Prompter en lokal LLM (Ollama) om at opdele hver tekst i rensede, hele sætninger.
 - Gemmer sætningerne i rækkefølge i en JSON-fil (rækkefølgen er nødvendig senere, når sætningerne skal grupperes i paragraffer).
 - Upserter hver case, så allerede behandlede cases ikke duplikeres ved genkørsel.
-- Kanonisering: sætter hver case og sætning i system med et stabilt id.
 - Regelbaseret rensning: fjerner kendte boilerplate-/rekrutteringsfraser fra teksten.
-- Statistisk rensning: filtrerer sætninger, der er unikt hyppige på tværs af hele tekstkorpusset (corpus-wide distinctiveness), via embedding + FAISS self-similarity search.
+- Statistisk rensning: filtrerer sætninger, der er hyppige på tværs af alle opslagstekster vha. embedding similarity.
 
 **2. Semantisk Chunking** ([afsnit](#semantisk-chunking))
-- Sammenlægger sætninger til *semantisk sammenhængende paragraffer* via embedding + FAISS self-similarity search mellem nabosætninger.
-- Indekserer opslagenes og ansøgningernes hele tekster og paragraffer relationelt.
+- Sammenlægger sætninger til *semantisk sammenhængende paragraffer* vha. embedding similarity mellem nabosætninger.
+- Gemmer resultaterne i en JSON-fil, så de kan genbruges i senere faser.
 
 **3. Berigelse** ([afsnit](#berigelse))
 - Embedding matching: beregner krav-svar-lighed inden for hver enkelt case. Opslags- og ansøgningstekst er allerede matchet på case-niveau, og embedding similarity anvendes til også at beregne ligheden mellem opslagsparagraffer og ansøgningsparagraffer.
 - Tag matching: anvender hardcodede taksonomiske tags med seed-tekst-eksempler til bedre embedding similarity search, beregner taksonomisk tag-lighed via embedding-similaritet og gemmer tags og similarity-scores i databasen.
 
 **4. Persistering i PostgreSQL** ([afsnit](#persistering-i-postgresql))
+- Indekserer opslagenes og ansøgningernes hele tekster og paragraffer relationelt.
 - Opretter/synkroniserer tabeller.
 - Gemmer cases, dokumenter, paragraffer og relationer.
 - Gemmer de forudberegnede krav→svar-paragrafmatches.
 - Indeholder en oversigt over tabellerne.
-
-
 
 **5. FAISS-indeksering** ([afsnit](#faiss-indeksering))
 - Genererer embeddings for dokumenter og paragraffer i fire Postgres-collections.
@@ -100,7 +98,7 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipe
 - Henter separat korte ansøgningsparagraffer, der direkte indeholder de matchede kompetenceord.
 
 **7. Promptgenerering** ([afsnit](#promptgenerering))
-- Sammensætter den endelige few-shot-prompt: nyt jobopslag, tilladt kompetenceliste, korte kompetence-eksempler, hele tidligere eksempler (opslag + ansøgning), krav→svar-paragrafpar.
+- Sammensætter den endelige few-shot-prompt: nyt jobopslag, tilladt kompetenceliste, korte kompetence-eksempler, hele tidligere eksempler (opslag + ansøgning), krav-svar-paragrafpar.
 - Tilføjer guardrails: sprog, tone, stil, kun dokumenterede teknologier, forbud mod opdigtede kompetencer, konkrete formuleringsregler.
 - Skriver resultatet til en fil, klar til LLM-inferens.
 
@@ -170,7 +168,7 @@ Løsningen var at gøre kravene så eksplicitte som muligt i selve prompten — 
 Men selv efter LLM-sætningsopdelingen var teksten stadig fyldt med generelle tekstelementer: hilsner, kontaktoplysninger, rekrutteringsfraser samt sætninger, der var så generiske, at de gik igen på tværs af helt urelaterede jobopslag og dermed var støj i forhold til det krav-svar-signal, som hensigten med systemet er at opfange. Dette resulterede i, at RAG-forespørgsler lige så ofte hentede tekster, der kun matchede på sprogbrug, fraser og vendinger, som tekster, der matchede på beskrivelser af kultur, kompetencer og erfaringer, og prioriteten i dette system er de sidstnævnte kvaliteter.
 Derfor blev 2 renseomgange tilføjet:
 1. **Regelbaseret rensning** — hvor tekstdele fjernes, hvis de matcher en hardcoded blacklist af ord og vendinger.
-2. **Corpus-wide distinctiveness-filtrering** — hvor alle sætninger på tværs af *alle* cases sammenlignes vha. embedding og FAISS self-similarity search, og sætningerne gives en score efter, hvor hyppige og ensartede de er, hvorefter en vis mængde af de mest ensartede sætninger fjernes.
+2. **Corpus-wide distinctiveness-filtrering** — hvor alle sætninger på tværs af *alle* cases sammenlignes vha. *embedding-similarity* (mere herom i næste afsnit) mod en fast tærskel: en sætning fjernes, hvis den har for høj lighed med andre sætninger.
 
 Dette hjalp noget, men selvom meget støj var fjernet fra teksterne, var problematikken med at styre, hvilke meningsbærende kvaliteter i teksten der skal matches på, ikke tilstrækkeligt under kontrol. Man kunne godt rense så meget irrelevant og ensartet tekst væk, at det tilbageværende indhold er så unikt som muligt, men det resulterer i for lidt og for partikulær tekst at matche på.
 Så problematikken bliver også håndteret ved at indeksere tekst med kategorier i en separat fase i pipelinen, Berigelse ([afsnit](#berigelse)).
@@ -201,10 +199,10 @@ Vi er dog kun interesseret i retningen af vektorerne, for længden af en vektor,
 For at "omforme" to teksters, eller ords (tokens), vektorer, så længden er ligegyldig, *normaliserer* man dem: de får samme længde, og kun retningen er til forskel. Hvis man så betragter de to vektorer som to lige lange linjer, der starter i 0 i koordinatsystemet, så indikerer vinklen mellem dem, altså hvor meget de peger i samme retning, hvor meget tallene, altså egenskaberne, den semantiske mening, ligner hinanden.
 
 
-*Chunking* betyder at dele lang tekst, som f.eks. hele dokumenter, op i mindre stykker, så semantisk søgning bliver mere præcis, og LLM'ens kontekst bliver mindre støjet af irrelevant indhold. Når f.eks. en AI-agent skal søge viden ud af et tekstkorpus, som er for stort til at være i dens kontekst, fremsøges kun de *chunks* af tekstkorpusset, som er semantisk lignende søgetermerne. Søgefunktionaliteten går ud på, at man på forhånd har embeddet og indekseret alle *chunks*, så man dermed kan fremsøge dem med cosinus-lighed med søgetermerne. På den måde kan resten af tekstkorpusset sorteres fra og holdes ude af AI-agentens kontekst.
+*Chunking* betyder at dele lang tekst, som f.eks. hele dokumenter, op i mindre stykker, så semantisk søgning bliver mere præcis, og LLM'ens kontekst bliver mindre støjet af irrelevant indhold. Når f.eks. en AI-agent skal søge viden ud af et tekstkorpus, som er for stort til at være i dens kontekst, fremsøges kun de *chunks* af tekstkorpusset, som er semantisk lignende søgetermerne. Søgefunktionaliteten baseres på, at man på forhånd har embeddet og indekseret alle *chunks*, så man dermed kan fremsøge dem med cosinus-lighed med søgetermerne. På den måde kan resten af tekstkorpusset sorteres fra og holdes ude af AI-agentens kontekst.
 
 **Hvorfor semantisk chunking, og ikke arbitrær chunking.**
-Den mest almindelige RAG-tilgang er arbitrær chunking: et fast antal tegn eller tokens pr. chunk, uafhængigt af indhold, men med overlap mellem chunks, så den arbitrære afskæring ikke fjerner en eventuel semantisk sammenhæng mellem chunks. Dette er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — chunking med et fast tegnvindue ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion ([afsnit](#ingestion))) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde.
+Den mest almindelige RAG-tilgang er arbitrær chunking: et fast antal tegn eller tokens pr. chunk, uafhængigt af indhold, men med overlap mellem chunks, så den arbitrære afskæring ikke fjerner en eventuel semantisk sammenhæng mellem chunks. Dette er ikke oplagt her, fordi jobopslag og ansøgninger i dette projekt er korte dokumenter (typisk nogle hundrede ord) — chunking med et fast tegnvindue ville ofte skære midt i en sætning eller blande to urelaterede emner sammen i én chunk. Løsningen er i stedet at arbejde med sætningen som den mindste enhed (allerede sikret i Ingestion ([afsnit](#ingestion))) og derefter gruppere sætninger til paragraffer ud fra deres *semantiske sammenhæng* snarere end en fast længde. Til afskæringen af paragrafferne er der brugt en heuristik, som anvender et lokalt minimum mellem sætningers løbende similarity-score, som stop-signal for en meningssammehængende paragraf.
 
 **Praktisk erfaring — semantik er ikke det samme som vigtighed**
 I den første iteration af systemet blev hele dokumenter/paragraffer embeddet og matchet direkte med kun *embedding-similarity*. Det virkede; systemet fandt faktisk relevante uddrag fra databasen, men blandt de bedste matches optrådte også eksempler, der tydeligvis ikke var reelt relevante. Det afslørede en central indsigt: embedding som metode til at sammenligne tekst skal ikke gøres til mere, end det egentlig er, nemlig en kvantificering af *hele* teksten, alle ordene, intet mindre, intet mere. Den semantiske mening trækkes ud af modellen, men maskinen deler ikke nødvendigvis brugerens opfattelse af, hvad der er semantisk vigtigt.
@@ -214,35 +212,30 @@ Selv efter blacklist-rensning af ord og rensning baseret på similarity-score (s
 #### Berigelse
 **Teori**
 En ren embedding-similarity kan ikke skelne mellem "disse tekster ligner hinanden i skrivestil" og "disse tekster handler om det samme emne"; to formuleringer kan ligne hinanden i ordvalg uden at handle om det samme emne, eller være helt forskelligt formuleret og alligevel dække samme emne. Bestemte emner kan derimod identificeres med *tags*, som er metadata, der angiver, at der er en vigtig semantisk mening til stede i teksten.
-*Tags* og embedding-similarity løser hver sin halvdel af problemet og komplementerer hinanden godt: *tags* giver et diskret, kategorisk svar på "er et bestemt emne/domæne nævnt?", hvilket er robust over for stilforskelle, men det er dog afhængigt af, at de rette *tags* er prædefineret; hvorimod embedding-similarity giver en kontinuerlig score, der generaliserer til ukendte formuleringer, men som kan snydes af overfladisk sproglig lighed og er præget af uforudsigelighed.
+*Tags* og embedding-similarity løser hver sin halvdel af problemet og komplementerer hinanden godt: *tags* giver et diskret, kategorisk svar på "er et bestemt emne/domæne nævnt?", hvilket er robust over for stilforskelle, men det er dog afhængigt af, at de rette *tags* er prædefineret; hvorimod embedding-similarity giver en kontinuerlig score, der generaliserer til ukendte formuleringer, men som kan snydes af overfladisk sproglig lighed og er præget af uforudsigelighed. Tekster tildeles dog *tags* via embedding-similarity selv. Hvert *tag* defineres ved seed-eksempler frem for blot sit navn: et enkelt abstrakt ord som "programmeringssprog" ligner ikke de konkrete sætninger i et jobopslag eller en ansøgning, så en embedding af navnet alene ville matche dårligt. Seed-eksemplerne er sætninger der indeholder hvordan begrebet bag et *tag* bruges anvendes i tekst, og deres gennemsnittet af deres embedding anvendes til at søge embedding-similarity på teksterne der skal tildeles *tags*.
 
-**Implementering — find kandidater og evaluér dem med tags**
-Udvælgelsen af korrekt matchende tekster er en kombineret udregning af embedding-similarity-scoring og *tag*-overlap, som udføres i 2 trin:
-1. Kandidatudvælgelse med embedding-similarity, der henter et bredt udvalg af de bedst matchende krav-svar-par fra hele tekstkorpusset.
-2. Rerank/filtrering blandt de fundne kandidater med *tag*-overlap som måleenhed — jo flere tags inden for samme kategori en kandidat deler med søgetermen, jo højere prioriteres den.
-
-*Tags* er organiseret taksonomisk i en struktur med to niveauer, hvor hvert *tag* hører under en overordnet kategori, f.eks. hører "programmeringssprog" under kategorien "teknisk kompetence". Kategoriniveauet er det, der gør "tag-overlap inden for samme kategori" til et meningsfuldt filter i det 2. rerank/filter-trin. To *tags* fra samme kategori bliver sammenlignelige, hvilket to vilkårlige *tags* ikke nødvendigvis er. Det giver *tag*-filtreringen en vis fleksibilitet.
-
-Hvert enkelt *tag* er defineret ved en håndfuld seed-eksempler på sætninger, der er vedhæftet *tag*'et, frem for blot dets navn. Dette gør, at *tag*-matches kan søges via embedding-similarity mod seed-eksemplerne frem for mod det eksakte ord, *tag*'et har som navn, så kvaliteten af hele *tag*-taksonomien afhænger af, hvor gode og entydige disse seed-eksempler er, og ikke af et match på et bestemt ord/tag-navn.
+**Implementering — tildeling af *tags* til alle tekster**
+Ved berigelse får alle tekster i korpusset deres *tags* forudberegnet og gemt i databasen, så retrieval senere kun skal slå dem op. 
+*Tags* er organiseret taksonomisk i en struktur med to niveauer, hvor hvert *tag* hører under en overordnet kategori, f.eks. hører "programmeringssprog" under kategorien "teknisk kompetence". Kategoriniveauet bruges ved tildelingen: ved at vælge de bedste *tags* pr. kategori frem for de bedste *tags* på tværs af alle kategorier, får hver tekst *tags* fra flere kategorier, f.eks. både en fra "Motivation" og en "Teknisk Kompetence", i stedet for at én dominerende kategori fylder alle pladserne. Når to tekster senere sammenlignes, tælles de fælles *tags* på tværs af kategorierne.
+Inden for hver kategori beholdes de bedst matchende *tags*, men kun hvis ligheden når en vis minimumstærskel, har høj nok vektor-score, ikke alle kategorier er nødvendigvis repræsenteret i en tekst. En tekst kan altså få flere *tags* i samme kategori, eller ingen, hvis intet ligner nok. Vektor-scoren og rangen af forskellige *tags* inden for samme kategori gemmes sammen med *tag*'et. Selve brugen af *tags* som rangering af kandidater, sker først på query-tid og er beskrevet under Retrieval ([afsnit](#retrieval)).
 
 **Praktisk erfaring — en udvalgt taksonomi frem for autogenererede *tags*.**
 Det var oplagt at prøve at sætte en LLM til at finde *tags* i tekstkorpusset, men resultatet var ikke brugbart.
 Et frit, LLM-genereret *tag*-sæt genintroducerer præcis det problem, Ingestion og Chunking allerede havde kæmpet med: overfladisk sproglig lighed uden kontrol over, hvilke kategorier der reelt er relevante. En prompt, der præcist og utvetydigt beskriver, hvilke emner der skal ledes efter og tagges, er en arbejdsopgave, der er mindst lige så omfattende som selv at skrive *tag*-taksonomien.
 Løsningen blev derfor en lukket, hardcoded taksonomi — et fast vokabular med egne seed-tekst-eksempler pr. *tag*, som embedding-similarity matcher imod. Disse seed-tekst-eksempler er dog autogenererede af en LLM.
-Et *tag* som "programmeringssprog" er enten sandt eller falsk, uanset om teksten er fra et jobopslag eller en ansøgning, et krav eller et svar.
+Et *tag* som "programmeringssprog" gælder enten for en tekst eller ikke, uanset om teksten er fra et jobopslag eller en ansøgning, et krav eller et svar, og det er netop det, der gør *tags* sammenlignelige på tværs af krav og svar.
 
 
 
 #### Persistering i PostgreSQL
 
-PostgreSQL er systemets "system of record": de faktiske tekster, id'er og relationer ligger her, mens FAISS-indeksene i næste fase er en afledning, der kan genopbygges fra databasen.
+PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, efter de er blevet bearbejdet i ingestion-fasen, sammen med de semantisk sammenhængende paragraffer der udvundet fra teksterne, og *tag*-taksonomien, samt relationelle tabeller, hvor FAISS-indeksene i næste fase er en afledning, der kan genopbygges fra databasen.
 
 **Tabeller**
-
 - `cases` — én række pr. case (jobopslag og ansøgning som ét par).
 - `job_documents` / `app_documents` — hele teksten pr. case, 1:1 med `cases`.
 - `job_paragraphs` / `app_paragraphs` — de semantisk segmenterede paragraffer, 1:N pr. case.
-- `job_app_paragraph_matches` — de forudberegnede krav→svar-koblinger: de bedst matchende ansøgningsparagraffer pr. jobparagraf.
+- `job_app_paragraph_matches` — de forudberegnede krav-svar-par: de bedst matchende ansøgningsparagraffer pr. jobparagraf.
 - `taxonomy_metadata`, `tags`, `tag_seeds` — selve tag-taksonomien med kategorier, tags og seed-eksempler.
 - `text_tags` — koblingen mellem en tagget tekstenhed (dokument eller paragraf) og dens tags, med score og rang inden for kategorien.
 - `faiss_id_map` — bro-tabellen mellem en FAISS-indeksposition og den oprindelige databaserække.
@@ -250,69 +243,170 @@ PostgreSQL er systemets "system of record": de faktiske tekster, id'er og relati
 
 #### FAISS-indeksering
 
-**Teori — fra tekst til søgbar vektor.** Kæden fra rå tekst til noget, man kan sammenligne tal-for-tal, går i store sprogmodeller typisk via: tekst → tokenizer → tokens (mindste tekst-enheder modellen regner med, ofte dele af ord) → token-id'er → en embedding-matrix der slår hvert token-id op som en vektor → transformer-lag der bearbejder tokenvektorerne i kontekst af hinanden. En *sentence embedding*-model (her en flersproget SentenceTransformer) gør noget lidt andet med det sidste trin: i stedet for at returnere én vektor pr. token, samler (poolers) den token-vektorerne til **én enkelt, fast-størrelse vektor for hele input-strengen** — det er den vektor, der gemmes og søges i, ikke token-vektorerne.
+**Teori — hvad er FAISS.** FAISS (Facebook AI Similarity Search) er et bibliotek bygget specifikt til hurtig nearest-neighbor-søgning blandt store mængder vektorer, det giver et ensartet API til at bygge, gemme, indlæse og søge et indeks, uanset datamængde. I projektet her er det anvendt til at opbygge en indeksering af teksterne i databaserne, sådan at en vilkårlig tekst kan embeddes til en vektorer og gives som input til FAISS API, som kan slå indeks op der er mapppet til rækker i databasen. FAISS gør det simpelthen muligt at søge med embedding-similarity, som klausul i en databaseforespørgsel. Her er det vigtigt at den samme embedding-model anvendes både ved opbygning af FAISS-indekset og ved forespørgsler, ellers vil similarity-scoren ikke være meningsfuld.
 
-**Teori — hvad er FAISS.** FAISS (Facebook AI Similarity Search) er et bibliotek bygget specifikt til hurtig nearest-neighbor-søgning blandt store mængder vektorer. At gøre det "i hånden" med numpy (sammenligne en query-vektor mod hver gemt vektor én for én, eller ét stort matrix-produkt) er faktisk fuldt ud brugbart ved dette projekts skala (nogle tusinde vektorer) — men FAISS er standardværktøjet, der også skalerer til millioner af vektorer, og som giver et ensartet API til at bygge, gemme, indlæse og søge et indeks, uanset datamængde.
-
-`IndexFlatIP` er den simpleste indekstype i FAISS: et eksakt (ikke-approksimeret), brute-force-indeks, der rangerer efter **inner product** (prikprodukt). Kombineret med at hver vektor L2-normaliseres før den tilføjes/søges (`faiss.normalize_L2`), bliver inner product matematisk identisk med cosine similarity — hvilket er hele grunden til, at normalisering sker konsekvent hver gang, en tekst embeddes nogen steder i denne kodebase.
-
-**Ræsonnement — hvorfor fire separate indeks.** I stedet for ét stort, fælles indeks bygges der fire adskilte collections: `job_documents`, `app_documents`, `job_paragraphs`, `app_paragraphs`. Det er en direkte konsekvens af v1's erfaring (se Semantisk Chunking): blander man jobopslag og ansøgninger, eller hele dokumenter og paragraffer, i samme indeks, kan genre og længde dominere similarity-scoren frem for reel faglig relevans. Adskilte collections pr. (dokumenttype × granularitet) sikrer, at sammenligninger altid sker "samme genre mod samme genre".
+**Implementering — 2 separate indeks** 
+I stedet for ét stort, fælles indeks bygges der 2 adskilte *collections*: `job_documents`, `job_paragraphs`. Dette sikrer, at sammenligninger altid sker inden for samme type tekst (dokument vs. paragraf), hvilket anvendes som grundlag for den samlede retrieval-strategi, der skal nemlig gives eksempler på tekster i form af både hele dokumenter og paragraffer til LLM'en, der skal skrive en ny ansøgning. Men de skal ikke fremsøges på tværs af disse typer. Ansøgningsteksterne skal heller ikke fremsøges, da de er knyttet til jobopslags-teksterne i databasen, så de kan matches korrekt under retrieval.
 
 ### Query time
 
 #### Retrieval
 
-**Teori — retrieval er flere spørgsmål, ikke ét.**
-Retrieval er det første "R" i RAG (*Retrieval-Augmented Generation*): det trin, hvor systemet finder frem til det materiale, der skal med i prompten. I den simpleste udgave embeddes forespørgslen, og de tekster, der ligger tættest på den i vektorrummet, hentes. Men her er forespørgslen et helt nyt jobopslag, og det, jeg leder efter, er ikke tekster, der ligner opslaget, men tekster, der *besvarer* det. Her bliver asymmetrien mellem jobopslag ("spørgsmål") og ansøgning ("svar") konkret.
-Derfor er retrieval ikke ét embedding-similarity-opslag, men flere adskilte opslag, der hver besvarer sit eget spørgsmål, og som derefter kombineres og rangeres. Intet enkelt "ligner dette"-signal er tilstrækkeligt alene — det var netop erfaringen fra både Chunking og Berigelse.
-Et centralt begreb er *reranking*: først hentes en bred kandidatliste med et hurtigt, groft signal (embedding-similarity), og derefter sorteres kandidaterne om efter et mere præcist signal (her *tag*-overlap).
+**Teori**
+Retrieval er det første "R" i RAG (*Retrieval-Augmented Generation*): det trin, hvor systemet finder frem til det materiale, der skal med i prompten. Et spørgsmål eller en problematik formuleres, og systemet forespørger tekst der minder om formuleringen i et tekstkorpus, som derefter kan bruges til at berige prompten med konkrete eksempler. Det forbedrer kvaliteten af de genererede svar betragteligt, da modellen får adgang til relevant kontekst. Embedding bruges typisk til at måle lighed mellem forespørgslen og teksterne i korpusset.
 
-**Implementering — fra nyt jobopslag til udvalgte eksempler**
-Input er en tekstfil med et nyt jobopslag. Opslaget behandles på præcis samme måde som de tidligere opslag: sætningerne opdeles af den samme lokale LLM, grupperes til paragraffer med den samme semantiske chunking og tagges med den samme taksonomi og de samme seed-eksempler. Det sikrer, at det nye opslag og korpusset er sammenlignelige på samme vilkår.
-Derefter køres en række opslag, der hver især bidrager til den endelige prompt:
-1. **Dokumentniveau** besvarer spørgsmålet: "hvilken af mine tidligere ansøgninger læser bedst som en stilistisk skabelon til dette nye opslag?" Der søges blandt de tidligere jobopslag, den tilhørende hele ansøgning hentes, og kandidaterne rerankes efter *tag*-overlap og derefter vektor-score.
-2. **Paragrafniveau** besvarer spørgsmålet: "hvilket tidligere krav ligner netop dette nye krav mest, og hvad svarede jeg dengang?" Der søges blandt de tidligere jobparagraffer for hver enkelt paragraf i det nye opslag.
-3. **Kompetence-matching** søger i opslaget efter ord og varianter fra en fast kompetenceliste, og henter separat korte ansøgningsparagraffer, der direkte indeholder de matchede kompetenceord.
-4. **Diversitetsudvælgelse** vælger blandt paragrafkandidaterne, så de endelige eksempler dækker forskellige krav.
+**Praktiske erfaringer — iterativ udvikling**
+I det her projekt er forespørgslen et helt nyt jobopslag, og det, jeg leder efter, er ikke tekster, der ligner opslaget, men tekster, der besvarer det. Derfor er retrieval ikke ét embedding-similarity-opslag, men flere adskilte opslag, der hver besvarer sit eget spørgsmål. Både min tidligere arbejdsmetode (ordoverlap alene) og første iteration af systemet (embedding-similarity alene) viste nemlig samme mønster: hver metode finder noget brugbart, men også meget støj. Ordoverlap fanger konkrete ordrette ligheder, embedding fanger ligheden i helhed uden at kende vigtigheden, og tags, som er tilføjet for at indikere vigtige emner, kan kun genkende det der er defineret på forhånd. Ingen enkelt "ligner dette"-metode er altså tilstrækkeligt alene. Det var netop motivationen bag Chunking og Berigelse faserne.
 
-At krav→svar-matchene blev forudberegnet i Berigelse-fasen er præcis det, der gør paragrafniveauet til et billigt opslag i databasen i stedet for en dyr live-beregning af ligheden mellem hver jobparagraf og hver ansøgningsparagraf i hele korpusset.
+**Rangering — hvordan *tags* og embedding-similarity kombineres**
+Berigelse ([afsnit](#berigelse)) forudberegner *tags* for alle tekster i korpusset. Ved query-tid tagges det nye opslag på samme måde: opslagets embedding sammenlignes med gennemsnittet af embeddings af hvert *tag*'s seed-eksempler, og de bedst matchende *tags* i hver kategori beholdes, så længe de overstiger en minimumstærskel. Disse *tags* for hele opslaget og bruges som målestok for alle tekst kandidater der skal udvælges. En kandidats *tag*-overlap er antallet af *tags*, den deler med hele opslaget. Rangeringen er bevidst lagdelt: *tag*-overlap afgør først, og vektor-scoren bruges kun til at skelne mellem kandidater med lige mange fælles *tags*. Ét ekstra fælles *tag* vejer altså tungere end enhver forskel i embedding-lighed. 
 
-**Ræsonnement — hvorfor kun inden for samme case.**
-At begrænse den afsluttende matching til én case ad gangen, frem for hele korpusset, er bevidst: inden for én allerede matchet case er den passage i ansøgningen, der rent faktisk besvarer et givent krav, den mest pålidelige grundsandhed, systemet har — fordi et menneske (mig selv) netop brugte den ansøgning til at besvare netop det opslag. En match på tværs af cases er kun et gæt.
+**Rangering på dokumentniveau.**
+Hele det nye opslag embeddes og sammenlignes med de tidligere hele jobopslag, og de mest lingende hentes som kandidater. Hver kandidat får tilføjet *tag*-overlap, dvs. antallet af *tags*, dens jobopslag deler med det nye opslags *tags*, og kandidaterne sorteres efter *tag*-overlap. Her bruges rangeringen til at omsortere alle de opslagstekster der er blevet forespurgt.
 
-**Ræsonnement — diversitetsudvælgelse.**
-Uden yderligere filtrering kunne de bedste kandidater alle stamme fra samme jobparagraf eller samme tema. Det ville gøre de endelige few-shot-eksempler i prompten (eksempler, som LLM'en kan efterligne) repetitive og skæve mod ét emne i stedet for at dække det nye opslags flere forskellige krav. Da antallet af eksempler, prompten har råd til, er begrænset (se token-budgettet i Promptgenerering), skal hver "plads" i prompten helst dække et *forskelligt* krav frem for nær-dubletter af det samme.
-Løsningen er at gruppere kandidatparrene efter jobparagraf og kun beholde de distinkte jobparagraffer, rangeret efter *tag*-overlap og dernæst vektor-score. For hver af dem vælges uafhængigt den bedst matchende ansøgningsparagraf, rangeret efter *tag*-overlap, derefter den forudberegnede krav→svar-score og til sidst vektor-score.
+**Rangering på paragrafniveau.**
+Her søges der pr. paragraf i det nye opslag. Hver forespørgselsparagraf embeddes og sammenlignes med alle de tidligere jobopslags-paragraffer, og de mest lignende hentes som kandidater. Der hentes bevidst flere kandidater, end der skal bruges i prompten. Hver paragraf kandidat får derefter målt *tag*-overlap op mod alle *tags* i det nye jobopslag; ikke kun den enkelte forespørgselsparagrafs *tags*. Her afgør rangeringen også, hvilke kandidater der kommer med, for kun de bedst rangerede beholdes, så der er plads til dem i prompten.
 
-**Ræsonnement — kompetence-matching ved siden af tags og embedding.**
-*Tag*- og embedding-laget er bevidst fuzzy og probabilistisk. Det er en styrke, fordi det generaliserer til formuleringer, systemet ikke har set før, men en svaghed, hvis man skal *garantere*, at et specifikt, konkret ord som "Kubernetes" eller "Scrum" bliver genkendt som til stede. En lille, håndholdt, deterministisk liste af nøgleord lukker det hul. Den giver LLM'en en eksplicit og forsvarlig whitelist af ord, den må bruge.
-Det er samme guardrail-tankegang som i Promptgenerering, blot fra den modsatte vinkel: i stedet for kun at *forbyde* opdigtede ord *tillader* listen aktivt de ord, der reelt findes i det nye opslag.
+**Krav til svar matching.**
+Selve søgningen med embedded-similarity sker kun blandt jobopslag og jobparagraffer; ansøgningsteksterne søges der aldrig direkte efter. Krav-svar-parrene er nemlig allerede fundet og gemt i databasen, så retrieval skal blot følge koblingen fra den fundne opslagstekst til dens svar, ansøgningsteksten. På dokumentniveau er koblingen case-id'et: det fundne jobopslag og den ansøgning, jeg sendte til det, hører til samme case, og ansøgningen hentes direkte. 
+På paragrafniveau er koblingen finere. Under Persistering er op til tre ansøgningsparagraffer indenfor samme case, der bedst besvarer en jobparagraf, allerede matchet. Når en lingende jobopslags-paragraf er udvalgt efter rangering (se ovenfor), vælger retrieval blandt dens persisteerede svarkandidater det, der har flest fælles tags med det nye hele opslag (igen ikke bare med paragraffen). Resultatet er et krav-svar-par: der består af en tidligere jobparagraf og den ansøgningsparagraf, der både matcher jobparagraffen og det nye opslag bedst. 
 
-**Praktisk erfaring — signalerne skal kombineres.**
-Både min tidligere arbejdsmetode (ordoverlap alene) og første iteration af systemet (embedding-similarity alene) viste samme mønster: hvert signal finder noget brugbart, men også støj, som det ikke selv kan afsløre. Ordoverlap fanger overfladen, embedding fanger ligheden i helhed uden at kende vigtigheden, og *tags* kender emnet, men kun for det, der er defineret på forhånd. Først kombinationen — bred kandidatsøgning, reranking med *tags*, diversitetsudvælgelse og en deterministisk kompetenceliste — gav kontrol over, hvad prompten rent faktisk indeholder.
+**Paragraffer er krav-til-svar koblet inden for samme case**
+At begrænse den matchingen af jobopslagsparagraffer og ansøgningsparagraffer til én case ad gangen, frem for hele korpusset, er bevidst. Inden for én allerede matchet case er den passage i ansøgningen, der rent faktisk besvarer et givent krav, den mest pålidelige grundsandhed, systemet har, fordi et menneske (mig selv) netop brugte den ansøgning til at besvare netop det opslag. Det har også en praktisk fordel: fordi krav-svar-matchene blev forudberegnet i Berigelse-fasen, er paragrafniveauet et billigt opslag i databasen. Alternativet var en dyr beregning under query-time af ligheden mellem hver jobparagraf og hver ansøgningsparagraf i hele korpusset.
+
+**Diversitetsudvælgelse.**
+Når der søges pr. paragraf fra det nye opslag, kan flere af disse forespørgselsparagraffer ramme den samme gamle jobparagraf, fordi de handler om nogenlunde det samme. Uden yderligere filtrering ville den samme gamle opslags-paragraf, og dermed det samme krav-svar-eksempel, kunne optræde flere gange i de endelige few-shot-eksempler i prompten (eksempler, som LLM'en kan efterligne). Det ville gøre eksemplerne repetitive og skæve mod ét emne i stedet for at dække det nye opslags flere forskellige krav. Da antallet af eksempler som prompten har råd til, er begrænset (se afsnittet Promptgenerering), bør eksemplerne helst dække forskellige krav.
+
+Løsningen er at samle fundene fra alle forespørgselsparagraffer og gruppere dem efter, hvilken gammel jobparagraf de peger på. Den samme gamle jobparagraf kan nemlig godt have matchet flere forespørgselsparagraffer, og alle disse fund udgør én gruppe.
+Hver gruppe bidrager kun med højst ét eksempel til prompten, så den samme gamle paragraf aldrig optræder flere gange.
+
+For hver gruppe skal der vælges to ting, og de vælges hver for sig:
+- **Hvilken forespørgselsparagraf jobparagraffen bedst matcher.** Hvis flere forespørgselsparagraffer matcher den samme gamle jobparagraf, beholdes det match, hvor vektor-ligheden mellem dem er højest.
+- **Hvilken svarparagraf der bruges som svar.** Blandt den udvalgte gamle jobparagrafs op til tre persisterede ansøgningsparagraffer vælges den, der har flest fælles *tags* med det nye opslag, ved uafgjort, vælges den med højest vektor-lighed til jobparagraffen under Persistering.
+Til sidst rangeres de udvalgte jobparagraffer på tværs af grupperne, som beskrevet under rangering på paragrafniveau, og kun de bedste beholdes.
+Diversiteten er dermed sikret på paragrafniveau, ikke på emneniveau: ingen to eksempler er den samme gamle paragraf.
+
+Så retrieval på dokumentniveau er:
+1. Nyt helt jobopslag embeddes.
+2. Embeddingen sammenlignes med alle tidligere hele jobopslag.
+3. De mest lignende opslag hentes som kandidater.
+4. Hver kandidat får målt *tag*-overlap med det nye opslag, og sorteres derefter.
+5. De bedst rangerede kandidater bruges i prompten.
+
+Retrieval på paragrafniveau er:
+1. Hver jobopslags-paragraf embeddes.
+2. De mest lignende gamle opslags-paragraffer fra hele tekstkorpusset hentes som kandidater.
+3. Hver kandidat får målt *tag*-overlap med det nye opslag, og sorteres derefter.
+4. De bedst rangerede opslags-paragraffer bruges til at finde ansøgningsparagraffer ud fra de persisterede svar-kandidater fra samme case.
+5. Blandt de koblede ansøgningsparagraffer vælges de mest relevante, også her baseret på *tag*-overlap med det nye opslag.
+6. De udvalgte ansøgningsparagraffer bruges i prompten.
+
+**Kompetence-matching ved siden af tags og embedding.**
+*Tag*- og embedding er bevidst fuzzy matching, altså probabilistisk og ikke-eksakt matching, som finder de tekster, der mest ligner forespørgslen, men ikke nødvendigvis er identisk med den. Det er en styrke, fordi det generaliserer til formuleringer, systemet ikke har set før. Men det er en svaghed, hvis man skal garantere, at et specifikt, konkret ord som "Object-Oriented-Programming" eller "Telepati" bliver genkendt som til stede. Derfor supplerer en lille, hardcoded liste af nøgleord de to andre lag. Den søger deterministisk i opslaget efter ordene og deres simple varianter og henter de korteste ansøgningsparagraffer, der direkte indeholder dem. Listen giver LLM'en en eksplicit og forsvarlig whitelist af ord, den må bruge. Det er samme guardrail-tankegang som i Promptgenerering, blot negeret: i stedet for kun at forbyde opdigtede ord tillader listen aktivt de ord, der reelt findes i det nye opslag.
+
 
 #### Promptgenerering
-
 **Teori — few-shot, context window og token-budget.**
 En prompt, der indeholder eksempler på den ønskede opgave, kaldes en *few-shot*-prompt; eksemplerne er det, LLM'en efterligner. Her er eksemplerne mine egne tidligere ansøgninger og krav→svar-par, så LLM'en kan genskabe min ordlyd og skrivestil.
 Alt, hvad der er hentet frem i retrieval-trinnet (kompetenceliste, korte kompetence-eksempler, hele dokumenter og paragrafpar), konkurrerer om det samme *token-budget* i prompten. En LLM's kontekstvindue (*context window*) er ikke uendeligt, og indhold midt i en meget lang prompt har en dokumenteret tendens til at blive "glemt" eller vægtet lavere end indhold i starten eller slutningen ("lost in the middle"). Derfor er standarden lav: som udgangspunkt ét helt eksempeldokument og fem paragrafpar. Ikke fordi flere eksempler ikke kunne være nyttige i teorien, men fordi hvert ekstra eksempel koster kontekstplads og opmærksomhed.
 
-**Implementering — sammensætning af prompten.**
-Prompten sættes sammen af de dele, som retrieval har fundet frem: det nye jobopslag, den tilladte kompetenceliste, de korte kompetence-eksempler, hele tidligere eksempler (opslag og ansøgning) og krav→svar-paragrafpar. Dertil kommer en række faste krav til sprog, tone og stil. Resultatet gemmes som en tekstfil, klar til LLM-inferens.
+**Implementering — sammensætning af prompten**
+Prompten sættes sammen af de dele, som retrieval har fundet frem: det nye jobopslag, den tilladte kompetenceliste, de korte kompetence-eksempler, hele tidligere eksempler (opslag og ansøgning) og krav-svar-paragrafpar. Dertil kommer en række faste krav til sprog, tone og stil. Resultatet gemmes som en tekstfil, klar til at blive promptet til LLM-inferens.
+Kravene i prompten er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. Uden det overdriver den, tilføjer og opdigter (*hallucinerer*), og lyder generelt som en chat-AI, som det netop var problemet med mine første prompts.
+Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknologier, kompetencer eller erfaring, der ikke er dokumenteret i kildeteksterne") og en *tilladelse* (den eksplicitte kompetence-whitelist fra retrieval-fasen, som aktivt tillader bestemte ord).
 
-**Ræsonnement — guardrails mod hallucination.**
-Kravene i prompten er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. Uden det overdriver den, tilføjer og opdigter (*hallucinerer*), og lyder generelt som en chat-AI — netop problemet med mine første prompts.
-Guardrailen har to sider, der begge er med: et *forbud* (opfind aldrig teknologier, kompetencer eller erfaring, der ikke er dokumenteret i kildeteksterne) og en *tilladelse* (den eksplicitte kompetence-whitelist fra retrieval-fasen, som aktivt tillader bestemte ord).
-Det er værd at være ærlig om, at den tredeling i indhold, stil og afviste eksempler (*content/style/rejected*), som oprindeligt var tanken bag guardrails, i den nuværende implementering udmøntes som tekstlige instruktioner i prompten frem for som en bogstavelig tredelt eksempelstruktur.
+Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
+    
+Brug de tidligere eksempler som stil- og argumentationsreference.
+Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
+eller er dokumenterede relevante kompetencer hos kandidaten.
+Opfind ikke erfaringer.
+
+Hard requirements:
+- Skriv på samme sprog som det nye jobopslag.
+- Anvend samme tone og sproglige stil som i kildeteksterne.
+- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
+- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
+- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
+- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
+- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
+- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
+- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
+- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
+- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
+- Fremhæv dokumenterede styrker neutralt og uden forbehold.
+- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor,
+  når de er relevante og kan dokumenteres i kandidatens kildetekster.
+- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne
+  ikke dokumenterer erfaringen. Opfind aldrig erfaring.
+- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
+
+med "Med venlig hilsen,  
+Bob"
+
+=== NYT JOBOPSLAG ===
+
+=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===
+Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan
+understøttes af kandidatens dokumenterede erfaring:
+- [...]
+- [...]
+
+
+=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===
+Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:
+--- Kort ansøgnings-eksempel ---
+[...]
+--- Kort ansøgnings-eksempel ---
+[...]
+--- Kort ansøgnings-eksempel ---
+[...]
+--- Kort ansøgnings-eksempel ---
+[...]
+--- Kort ansøgnings-eksempel ---
+[...]
+
+
+=== HELE TIDLIGERE EKSEMPLER ===
+Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:
+
+--- Eksempel 1: tidligere jobopslag ---
+[...]
+--- Tilhørende ansøgning ---
+[...]
+
+--- Eksempel 2: tidligere jobopslag ---
+[...]
+--- Tilhørende ansøgning ---
+
+
+=== KRAV -> SVAR-EKSEMPLER ===
+Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:
+--- Kravparagraf ---
+[...]
+--- Tilhørende svarparagraf ---
+[...]
+
+--- Kravparagraf ---
+[...]
+--- Tilhørende svarparagraf ---
+[...]
+
+--- Kravparagraf ---
+[...]
+--- Tilhørende svarparagraf ---
+[...]
 
 **Praktisk erfaring — kontekstlængde.**
 I Ollama-klienten kan man sætte "Context length" under Settings. Jeg har den sat til maksimum, fordi de prompts, jeg får genereret, er meget teksttunge og dermed indeholder mange tokens. Dette bør på sigt optimeres.
 
 
 
-#### Fremtidigt / endnu ikke implementeret
+## Fremtidigt / endnu ikke implementeret
 
-- Selve LLM-inferencen på den genererede prompt (lokal, offline) — endnu ikke koblet på; pipelinen stopper i dag ved `generated_prompt.txt`.
-- **Asymmetrisk embedding** via instruktions-prefix (`query:`/`passage:`, som i fx E5/BGE/GTE-modeller) for bedre krav→svar-matching. Dette er reelt "rod-fixet" til den asymmetri, hele Berigelse- og retrieval-fasen i dag kompenserer for med tags og forudberegnede matches: et jobkrav og et ansøgnings-svar er ikke symmetriske tekster (spørgsmål vs. svar), men embeddes i dag med samme model uden retningsspecifik instruktion. En asymmetrisk model, der embedder krav som "query" og svar som "passage", kunne potentielt reducere behovet for dele af tag-laget — men er ikke afprøvet endnu.
+- Systematisering af tilføjelser af ny jobopslag og tilhørende ansøgningstekster.
+- Automatisk kvalitetskontrol af genererede ansøgningstekster. De genererede ansøgningstekster som pt. produceres af at anvende prompten på en kommerciel LLM har stadig behov for manuel gennemgang og validering, før de opfylder mine kvalitetskrav. Den data der produceres ved at der generes ansøgninger og jeg retter dem, bør derfor logges og kunne genanvendes til evaluering og forbedring på sigt.
+- Ambitionen er stadig kun at anvende lokale, offline LLM-modeller til generering af ansøgningstekster. Pt. promptes en kommerciel LLM, som står for selve genereringen af ansøgningsteksterne.
+- Asymmetrisk embedding via instruktions-prefix (`query:`/`passage:`, som i fx E5/BGE/GTE-modeller) for bedre krav-svar-matching. Dette er reelt en løsning til den asymmetri, hele Berigelse- og retrieval-fasen pt. kompenserer for med tags og forudberegnede matches: et jobkrav og et ansøgnings-svar er ikke symmetriske tekster (spørgsmål vs. svar), men embeddes i dag med samme model uden retningsspecifik instruktion. En asymmetrisk model, der embedder krav som "query" og svar som "passage", kunne potentielt reducere behovet for dele af tag-laget — men er ikke afprøvet endnu.
 - Justering af k-værdier og similarity-thresholds (foreløbig sat ud fra stikprøver, ikke systematisk evalueret).
 - Eksport af den færdige ansøgningstekst til PDF ( via Puppeteer).
