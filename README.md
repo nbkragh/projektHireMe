@@ -147,7 +147,7 @@ Kaldet til Ollama har følgende *options*:
 `temperature: 0.0` skruer helt ned for kreativiteten, så et givent input konsekvent giver samme output — determinisme er en forudsætning for at kunne bygge en pipeline, man kan stole på og genkøre.
 `"system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave ...` er systemprompten.
 
->json={
+>"""json={
 >    "model": model,
 >    "prompt": prompt,
 >    "system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave er at analysere en given tekst og opdele den i sætninger",
@@ -160,6 +160,7 @@ Kaldet til Ollama har følgende *options*:
 >    },
 >    "options": {"temperature": 0.0},
 > },
+>"""
 
 **Praktisk erfaring**
 Da prompten til Ollama i en tidlig iteration bad om at splitte teksten i "sætninger" uden at definere ordet "sætning", var modellens fortolkning af, hvad der udgør én sætning, f.eks. om en overskrift eller et enkelt bullet-punkt talte som "en sætning", uforudsigelig nok til at give enten for aggressiv eller for konservativ opdeling samt lejlighedsvis ugyldig returneret JSON.
@@ -315,92 +316,85 @@ Prompten sættes sammen af de dele, som retrieval har fundet frem: det nye jobop
 Kravene i prompten er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. Uden det overdriver den, tilføjer og opdigter (*hallucinerer*), og lyder generelt som en chat-AI, som det netop var problemet med mine første prompts.
 Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknologier, kompetencer eller erfaring, der ikke er dokumenteret i kildeteksterne") og en *tilladelse* (den eksplicitte kompetence-whitelist fra retrieval-fasen, som aktivt tillader bestemte ord).
 
-Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
-    
-Brug de tidligere eksempler som stil- og argumentationsreference.
-Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
-eller er dokumenterede relevante kompetencer hos kandidaten.
-Opfind ikke erfaringer.
-
-Hard requirements:
-- Skriv på samme sprog som det nye jobopslag.
-- Anvend samme tone og sproglige stil som i kildeteksterne.
-- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
-- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
-- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
-- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
-- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
-- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
-- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
-- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
-- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
-- Fremhæv dokumenterede styrker neutralt og uden forbehold.
-- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor,
-  når de er relevante og kan dokumenteres i kandidatens kildetekster.
-- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne
-  ikke dokumenterer erfaringen. Opfind aldrig erfaring.
-- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
-
-med "Med venlig hilsen,  
-Bob"
-
-=== NYT JOBOPSLAG ===
-
-=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===
-Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan
-understøttes af kandidatens dokumenterede erfaring:
-- [...]
-- [...]
-
-
-=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===
-Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:
---- Kort ansøgnings-eksempel ---
-[...]
---- Kort ansøgnings-eksempel ---
-[...]
---- Kort ansøgnings-eksempel ---
-[...]
---- Kort ansøgnings-eksempel ---
-[...]
---- Kort ansøgnings-eksempel ---
-[...]
-
-
-=== HELE TIDLIGERE EKSEMPLER ===
-Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:
-
---- Eksempel 1: tidligere jobopslag ---
-[...]
---- Tilhørende ansøgning ---
-[...]
-
---- Eksempel 2: tidligere jobopslag ---
-[...]
---- Tilhørende ansøgning ---
-
-
-=== KRAV -> SVAR-EKSEMPLER ===
-Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:
---- Kravparagraf ---
-[...]
---- Tilhørende svarparagraf ---
-[...]
-
---- Kravparagraf ---
-[...]
---- Tilhørende svarparagraf ---
-[...]
-
---- Kravparagraf ---
-[...]
---- Tilhørende svarparagraf ---
-[...]
+>"""
+>Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere >jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
+>    
+>Brug de tidligere eksempler som stil- og argumentationsreference.
+>Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
+>eller er dokumenterede relevante kompetencer hos kandidaten.
+>Opfind ikke erfaringer.
+>
+>Hard requirements:
+>- Skriv på samme sprog som det nye jobopslag.
+>- Anvend samme tone og sproglige stil som i kildeteksterne.
+>- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
+>- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
+>- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
+>- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
+>- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
+>- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
+>- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
+>- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
+>- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
+>- Fremhæv dokumenterede styrker neutralt og uden forbehold.
+>- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor, når de er relevante og kan dokumenteres i kandidatens kildetekster.
+>- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne ikke dokumenterer erfaringen. Opfind aldrig erfaring.
+>- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
+>
+>med "Med venlig hilsen,  
+>Bob"
+>
+>=== NYT JOBOPSLAG ===
+>
+>=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===
+>Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan understøttes af kandidatens dokumenterede erfaring:
+>- [...]
+>- [...]
+>
+>=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===
+>Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:
+>--- Kort ansøgnings-eksempel ---
+>[...]
+>--- Kort ansøgnings-eksempel ---
+>[...]
+>--- Kort ansøgnings-eksempel ---
+>[...]
+>--- Kort ansøgnings-eksempel ---
+>[...]
+>--- Kort ansøgnings-eksempel ---
+>[...]
+>
+>=== HELE TIDLIGERE EKSEMPLER ===
+>Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:
+>--- Eksempel 1: tidligere jobopslag ---
+>[...]
+>--- Tilhørende ansøgning ---
+>[...]
+>
+>--- Eksempel 2: tidligere jobopslag ---
+>[...]
+>--- Tilhørende ansøgning ---
+>
+>=== KRAV -> SVAR-EKSEMPLER ===
+>Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:
+>--- Kravparagraf ---
+>[...]
+>--- Tilhørende svarparagraf ---
+>[...]
+>
+>--- Kravparagraf ---
+>[...]
+>--- Tilhørende svarparagraf ---
+>[...]
+>
+>--- Kravparagraf ---
+>[...]
+>--- Tilhørende svarparagraf ---
+>[...]
+>"""
 
 **Praktisk erfaring — kontekstlængde.**
 I Ollama-klienten kan man sætte "Context length" under Settings. Jeg har den sat til maksimum, fordi de prompts, jeg får genereret, er meget teksttunge og dermed indeholder mange tokens. Dette bør på sigt optimeres.
-
-
 
 ## Fremtidigt / endnu ikke implementeret
 
