@@ -348,49 +348,50 @@ Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknolog
 >
 >=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===
 >Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan understøttes af kandidatens dokumenterede erfaring:
->- [...]
->- [...]
+>  ...
+>  ...
 >
 >=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===
 >Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:
->--- Kort ansøgnings-eksempel ---
->[...]
->--- Kort ansøgnings-eksempel ---
->[...]
->--- Kort ansøgnings-eksempel ---
->[...]
->--- Kort ansøgnings-eksempel ---
->[...]
->--- Kort ansøgnings-eksempel ---
->[...]
+> --- Kort ansøgnings-eksempel ---
+>  ...
+> --- Kort ansøgnings-eksempel ---
+>  ...
+> --- Kort ansøgnings-eksempel ---
+>  ...
+> --- Kort ansøgnings-eksempel ---
+>  ...
+> --- Kort ansøgnings-eksempel ---
+>  ...
 >
 >=== HELE TIDLIGERE EKSEMPLER ===
 >Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:
->--- Eksempel 1: tidligere jobopslag ---
->[...]
->--- Tilhørende ansøgning ---
->[...]
+> --- Eksempel 1: tidligere jobopslag ---
+> ...
+> --- Tilhørende ansøgning ---
+> ...
 >
->--- Eksempel 2: tidligere jobopslag ---
->[...]
->--- Tilhørende ansøgning ---
+> --- Eksempel 2: tidligere jobopslag ---
+> ...
+> --- Tilhørende ansøgning ---
+> ...
 >
 >=== KRAV -> SVAR-EKSEMPLER ===
 >Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:
 >--- Kravparagraf ---
->[...]
+>  ...
 >--- Tilhørende svarparagraf ---
->[...]
+>  ...
 >
 >--- Kravparagraf ---
->[...]
+>  ...
 >--- Tilhørende svarparagraf ---
->[...]
+>  ...
 >
 >--- Kravparagraf ---
->[...]
+>  ...
 >--- Tilhørende svarparagraf ---
->[...]
+>  ...
 >"""
 
 **Praktisk erfaring — kontekstlængde.**
