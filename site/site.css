@@ -1,0 +1,22 @@
+body { font-family: system-ui, sans-serif; line-height: 1.6; color: #222; background: #fafafa; }
+main { max-width: 52rem; margin: 0 auto; padding: 1.5rem; }
+.toolbar { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.toolbar button { padding: .3rem .8rem; cursor: pointer; }
+
+details.section { margin: .4rem 0; border-left: 3px solid #cdd; }
+details.section > .section-body { padding: 0 0 .5rem 1rem; }
+summary { cursor: pointer; list-style: none; padding: .25rem .6rem; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸"; display: inline-block; margin-right: .5rem; transition: transform .15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+summary:hover { background: #eef3f6; }
+summary > :is(h1,h2,h3,h4,h5,h6) { display: inline; margin: 0; }
+
+.level-1 > summary h1 { font-size: 1.9rem; }
+.level-2 > summary h2 { font-size: 1.5rem; }
+.level-3 > summary h3 { font-size: 1.25rem; }
+.level-4 > summary h4 { font-size: 1.1rem; }
+.level-5 > summary h5 { font-size: 1rem; }
+
+pre, code { background: #f0f0f0; }
+pre { padding: .75rem; overflow-x: auto; }

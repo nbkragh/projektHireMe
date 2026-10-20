@@ -1,11 +1,13 @@
 # projektHireMe
-# Intro
+---
+---
+## Intro
+### Motivation
+---
 
-## Motivation
+#### Jobsøgning
 
-### Jobsøgning
-
-#### Projekt Hire Me — eller hvordan jeg lærte at avle mine jobansøgninger
+##### Projekt Hire Me — eller hvordan jeg lærte at avle mine jobansøgninger
 
 Der er ikke så meget sjovt ved at søge job som ledig. Man skal søge mindst 6 job om måneden, uanset om der overhovedet er så mange relevante opslag at finde — på internettet eller i ens netværk. Som tiden går, bliver det mere og mere repetitivt at formulere, hvor motiveret man er for at arbejde med softwareudvikling inden for netop dén branche, man søger ind i, og ikke mindst at beskrive, igen og igen, hvordan ens kompetencer og kvaliteter matcher dem, der efterspørges i opslaget. Det løber op i rigtig mange gentagelser.
 
@@ -16,7 +18,7 @@ Med LLM'ers fremgang, og fordi de i dag er så lette at tilgå og anvende — og
 Men det er ikke nok at nøjes med at gå et metaniveau op og lave en fast copy-paste-prompt til at generere nye ansøgninger. Det giver et alt for generisk resultat.
 I stedet har jeg, ved hjælp af vibe-coding, agentic development, AI-Assisted Software Engineering eller hvad det end bliver kaldt nu om dage, udviklet et RAG-setup, som dynamisk sammensætter en prompt med citater fra tidligere ansøgninger, skræddersyet til netop dét jobopslag, jeg vil søge - se, dét er meta!
 
-#### Forrige arbejdsmetoder
+##### Forrige arbejdsmetoder
 Min tidligere arbejdsproces med at skrive ansøgninger bestod af:
 - at have en omfattende liste af genanvendelige paragraffer fra tidligere ansøgninger samlet i et tekstdokument. Til at samle denne liste havde jeg bedt en LLM om at gennemgå alle mine ansøgninger og finde eksempler på de mest anvendte formuleringer af kompetence-matches, motivationer, personlige kvaliteter osv.
 - at bruge et script til at udtrække et sæt af disse genanvendelige paragraffer, som matcher opslagsteksten, med Jaccard-overlap (mængde-lighed mellem ordsæt).
@@ -26,10 +28,10 @@ Kvaliteten af de genererede ansøgninger var dog meget svingende, og det endte o
 Problemet var, at eksempelparagrafferne fra mine tidligere ansøgninger udelukkende var udvalgt baseret på flest matchende ord og dermed kunne indeholde uhensigtsmæssige ord, f.eks. nævnte kompetencer, som ikke var relevante for jobopslaget. I det hele taget var der for meget støj og for lidt kontrol over, hvilke paragraffer der blev udvalgt som relevante eksempler.
 Desuden var promptinstrukserne ikke præcise og strikse nok til at forhindre LLM'en i at overdrive, tilføje og generelt lyde som — ja — en chat-AI.
 
-## Use Case
+### Use Case
 Jeg vil som bruger kunne copy-paste teksten fra et jobopslag som input og som output få returneret en ansøgningstekst, hvis ordlyd, skrivestil og kompetence-match så vidt muligt minder om min egen.
 
-## Problemstilling
+### Problemstilling
 Hvordan kan tidligere formuleringer i ansøgninger, der matcher bestemte kompetencer og kvaliteter, som er efterspurgte i et givent jobopslag, søges frem, kombineres og genbruges i en ny ansøgning?
 
 ### Kerneidé
@@ -48,12 +50,13 @@ Tidligere jobopslag sammen med de ansøgninger, som jeg har sendt til dem, betra
 - Internet: 780 Mbps.
 - Ollama, en softwareplatform, der pakker LLM-modeller, deres konfigurationer og runtime-komponenter og servicerer kørsel og adgang til LLM via API og en chat-klient.
 
-#
-# Løsning
+---
+---
+## Løsning
 
-## Pipeline
-
-### Oversigt
+### Pipeline
+---
+#### Oversigt
 
 Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipeline, den udgør. De enkelte faser er beskrevet nærmere i [Building](#building):
 
@@ -103,19 +106,16 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipe
 - Skriver resultatet til en fil, klar til LLM-inferens.
 
 ### Building
-
+---
 #### Ingestion
-
 Som udgangspunkt er alle opslags- og ansøgningsdokument-par allerede organiseret i egne mapper — udfordringen er at normalisere og formatere teksten i dokumenterne, så de opfylder de krav, som resten af pipelinen stiller: entydige, rensede, hele sætninger, gemt i en bestemt rækkefølge
 (rækkefølgen bruges direkte i næste fase til at afgøre, hvilke sætninger der hører sammen i en paragraf).
 
 ##### Teori
-
 Fri tekst fra jobopslag og ansøgninger er fyldt med støj: overskrifter uden punktum, opremsninger, forkortelser, kontaktinfo midt i teksten osv.
 En simpel regex er ikke tilstrækkelig til at definere og opdele en tekst i sætninger; det er for omstændigt at forudsige alle de tekstmæssige muligheder, der er for at afgrænse en sætning. F.eks. ville specielle tegn som `:`/`!`/`?`, forkortelser, bullet-punkter uden slutpunktum, tal, bindestregssammensætninger osv. være for omfattende at inkludere. Det ville blive en løbende forbedringsproces. Derfor bruges her i stedet en forespørgsel til en lokal LLM til selve sætningsopdelingen — men kun til opdelingen, ikke til at omskrive eller opsummere teksten.
 
 ##### Statistisk tekstanalyse med LLM
-
 Ollama kaldes til at prompte LLM-modellen `hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL`, hentet fra huggingface.co, med følgende prompt, hvor begrænsningerne er sat helt konkret, og begrebet "sætning" er defineret som følger:
 
 > """
@@ -151,18 +151,18 @@ Kaldet til Ollama har følgende *options*:
 
 >"""  
 >json={  
->    "model": model,  
->    "prompt": prompt,  
->    "system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave er at analysere en given tekst og opdele den i sætninger",  
->    "stream": False,  
->    "format": {  
->        "type": "array",  
->        "items": {  
->            "type": "string"  
->        }  
->    },  
->    "options": {"temperature": 0.0},  
-> },  
+>   "model": model,  
+>   "prompt": prompt,  
+>   "system": "Du er en dygtig tekstsegmenteringsassistent. Din opgave er at analysere en given tekst og opdele den i sætninger",  
+>   "stream": False,  
+>   "format": {  
+>       "type": "array",  
+>       "items": {  
+>           "type": "string"  
+>       }  
+>   },  
+>   "options": {"temperature": 0.0},  
+>},  
 >"""  
 
 ##### Praktisk erfaring
@@ -233,7 +233,7 @@ Et *tag* som "programmeringssprog" gælder enten for en tekst eller ikke, uanset
 
 
 
-##### Persistering i PostgreSQL
+#### Persistering i PostgreSQL
 
 PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, efter de er blevet bearbejdet i ingestion-fasen, sammen med de semantisk sammenhængende paragraffer der udvundet fra teksterne, og *tag*-taksonomien, samt relationelle tabeller, hvor FAISS-indeksene i næste fase er en afledning, der kan genopbygges fra databasen.
 
@@ -256,10 +256,11 @@ FAISS (Facebook AI Similarity Search) er et bibliotek bygget specifikt til hurti
 I stedet for ét stort, fælles indeks bygges der 2 adskilte *collections*: `job_documents`, `job_paragraphs`. Dette sikrer, at sammenligninger altid sker inden for samme type tekst (dokument vs. paragraf), hvilket anvendes som grundlag for den samlede retrieval-strategi, der skal nemlig gives eksempler på tekster i form af både hele dokumenter og paragraffer til LLM'en, der skal skrive en ny ansøgning. Men de skal ikke fremsøges på tværs af disse typer. Ansøgningsteksterne skal heller ikke fremsøges, da de er knyttet til jobopslags-teksterne i databasen, så de kan matches korrekt under retrieval.
 
 ### Query time
+---
 
 #### Retrieval
 
-##### Teor
+##### Teori
 Retrieval er det første "R" i RAG (*Retrieval-Augmented Generation*): det trin, hvor systemet finder frem til det materiale, der skal med i prompten. Et spørgsmål eller en problematik formuleres, og systemet forespørger tekst der minder om formuleringen i et tekstkorpus, som derefter kan bruges til at berige prompten med konkrete eksempler. Det forbedrer kvaliteten af de genererede svar betragteligt, da modellen får adgang til relevant kontekst. Embedding bruges typisk til at måle lighed mellem forespørgslen og teksterne i korpusset.
 
 ##### Praktiske erfaringer — iterativ udvikling
@@ -404,6 +405,8 @@ Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknolog
 ##### Praktisk erfaring — kontekstlængde.
 I Ollama-klienten kan man sætte "Context length" under Settings. Jeg har den sat til maksimum, fordi de prompts, jeg får genereret, er meget teksttunge og dermed indeholder mange tokens. Dette bør på sigt optimeres.
 
+---
+---
 ## Fremtidigt / endnu ikke implementeret
 
 - Systematisering af tilføjelser af ny jobopslag og tilhørende ansøgningstekster.
