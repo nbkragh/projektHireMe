@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-site.txt
-      - run: python scripts/build_site.py
+      - run: python build/build_site.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
