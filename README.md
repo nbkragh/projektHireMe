@@ -5,7 +5,8 @@
 ## Intro
 ### Motivation
 
-#### Projekt Hire Me — eller hvordan jeg lærte at avle mine jobansøgninger
+#### Few-shot RAG Prompt Engineering
+#### — eller hvordan jeg lærte at avle mine jobansøgninger
 
 Der er ikke så meget sjovt ved at søge job som ledig. Man skal søge mindst 6 job om måneden, uanset om der overhovedet er så mange relevante opslag at finde — på internettet eller i ens netværk. Som tiden går, bliver det mere og mere repetitivt at formulere, hvor motiveret man er for at arbejde med softwareudvikling inden for netop dén branche, man søger ind i, og ikke mindst at beskrive, igen og igen, hvordan ens kompetencer og kvaliteter matcher dem, der efterspørges i opslaget. Det løber op i rigtig mange gentagelser.
 
@@ -27,7 +28,7 @@ Problemet var, at eksempelparagrafferne fra mine tidligere ansøgninger udelukke
 Desuden var promptinstrukserne ikke præcise og strikse nok til at forhindre LLM'en i at overdrive, tilføje og generelt lyde som — ja — en chat-AI.
 
 ### Use Case
-Jeg vil som bruger kunne copy-paste teksten fra et jobopslag som input og som output få returneret en ansøgningstekst, hvis ordlyd, skrivestil og kompetence-match så vidt muligt minder om min egen.
+*Jeg vil som bruger kunne copy-paste teksten fra et jobopslag som input og som output få returneret en ansøgningstekst, hvis ordlyd, skrivestil og kompetence-match så vidt muligt minder om min egen.*
 
 ### Problemstilling
 Hvordan kan tidligere formuleringer i ansøgninger, der matcher bestemte kompetencer og kvaliteter, som er efterspurgte i et givent jobopslag, søges frem, kombineres og genbruges i en ny ansøgning?
@@ -102,6 +103,21 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipe
 
 ### Building
 
+#### Opdatering med nye case-mapper
+
+Når et nyt jobopslag og den tilhørende ansøgning er lagt i en undermappe under `EKSPORT_ROOT`, kan den eksisterende pipeline opdateres samlet:
+
+```powershell
+python update_pipeline.py --dry-run
+python update_pipeline.py
+```
+
+Opdateringen sammenligner mappenavnene med `extracted_sentences.json` og sender kun nye, komplette opslag/ansøgnings-par gennem ingestion. Mapper uden begge dokumenter springes over og kan behandles, når parret er komplet. Opdateringen er bevidst begrænset til nye mapper; ændringer af allerede kendte mapper og sletning af mapper spejles ikke automatisk.
+
+Efter ingestion bruger cleanup hele den nyeste `extracted_sentences.json`, og semantisk chunking genskaber `segmented_and_ready.json` for hele korpusset. PostgreSQL opdateres transaktionelt, inklusive en fuld genberegning af krav-svar-paragrafferne. Den aktuelle `tags_taxonomy.json` indlæses, hvorefter alle tekster tagges igen, og alle FAISS-indeks genopbygges fra PostgreSQL. De fulde genberegninger bevarer samme corpus-wide logik som den oprindelige pipeline og gør det muligt at genoptage efter en fejl ved at køre scriptet igen.
+
+Case-ID'er dannes deterministisk fra mappenavnet i stedet for rækkefølgen i JSON-filen. Ved første opdatering migreres eksisterende database-cases til disse ID'er ud fra deres casenavne. Hvis navne eller ID'er ikke kan matches entydigt, afbrydes opdateringen, så data ikke sammenblandes.
+
 #### Ingestion
 Som udgangspunkt er alle opslags- og ansøgningsdokument-par allerede organiseret i egne mapper — udfordringen er at normalisere og formatere teksten i dokumenterne, så de opfylder de krav, som resten af pipelinen stiller: entydige, rensede, hele sætninger, gemt i en bestemt rækkefølge
 (rækkefølgen bruges direkte i næste fase til at afgøre, hvilke sætninger der hører sammen i en paragraf).
@@ -113,30 +129,31 @@ En simpel regex er ikke tilstrækkelig til at definere og opdele en tekst i sæt
 ##### Statistisk tekstanalyse med LLM
 Ollama kaldes til at prompte LLM-modellen `hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL`, hentet fra huggingface.co, med følgende prompt, hvor begrænsningerne er sat helt konkret, og begrebet "sætning" er defineret som følger:
 
->
->OPGAVE:
->Din opgave er at analysere og opdele det nedenstående TEKST-segment, så resultatet opfylder de VIGTIGE KRAV.
->
->TEKST:
->{`text`}
->
->VIGTIGE KRAV:
->- En sætning er en komplet grammatisk enhed, der giver semantisk mening alene, som er afsluttet med ".", "?" eller "!".
->- Opdel teksten i TEKST-segmentet ovenfor i sætninger,
->- Sætningerne skal være trimmed for whitespace.
->- returner teksten nøjagtigt som den fremstår i kilden, ingen ændringer eller fortolkninger.
->- returner IKKE tomme sætninger
->- returner IKKE sætninger der kun indeholder whitespace.
->- returner IKKE sætninger der indeholder metadata.
->- returner IKKE sætninger der indeholder URL'er.
->- returner IKKE sætninger der indeholder kontaktoplysninger.
->- returner IKKE sætninger der indeholder personnavne.
->- returner IKKE sætninger der indeholder adresser.
->- returner IKKE sætninger der indeholder telefonnumre.
->- returner IKKE sætninger der indeholder email-adresser.
->
->AFLEVERING:
->returner sætningerne i en valid json-liste
+~~~text
+OPGAVE:
+Din opgave er at analysere og opdele det nedenstående TEKST-segment, så resultatet opfylder de VIGTIGE KRAV.
+
+TEKST:
+{`text`}
+
+VIGTIGE KRAV:
+- En sætning er en komplet grammatisk enhed, der giver semantisk mening alene, som er afsluttet med ".", "?" eller "!".
+- Opdel teksten i TEKST-segmentet ovenfor i sætninger,
+- Sætningerne skal være trimmed for whitespace.
+- returner teksten nøjagtigt som den fremstår i kilden, ingen ændringer eller fortolkninger.
+- returner IKKE tomme sætninger
+- returner IKKE sætninger der kun indeholder whitespace.
+- returner IKKE sætninger der indeholder metadata.
+- returner IKKE sætninger der indeholder URL'er.
+- returner IKKE sætninger der indeholder kontaktoplysninger.
+- returner IKKE sætninger der indeholder personnavne.
+- returner IKKE sætninger der indeholder adresser.
+- returner IKKE sætninger der indeholder telefonnumre.
+- returner IKKE sætninger der indeholder email-adresser.
+
+AFLEVERING:
+returner sætningerne i en valid json-liste
+~~~
 
 
 **Kaldet til Ollama har følgende *options***:
@@ -184,7 +201,7 @@ Bogstaver er, udover enkeltbogstavsord som "i", "å" og "ø", ikke meningsbæren
 Kvantificeringen af disse tokens, eller ord om man vil, går ud på at tillægge dem alle en unik vektor.
 Hvis læseren ikke kender begrebet *vektor*, kan det være tilstrækkeligt at forstå en vektor som en samling af tal i en bestemt rækkefølge, f.eks. `[0.12, -0.45, 0.88, …]` eller `[-0.67, 57.11, 40.01, …]`.
 Dette er et alsidigt matematisk redskab, som i denne sammenhæng bruges til at tillægge en token grader af forskellige *egenskaber*; hvert tal i vektoren angiver simpelthen, hvor meget denne token bærer en vis egenskab.
-Disse egenskaber er resultatet af, at embeddingmodellen er blevet trænet på helt vilde mængder tekst og har fundet, at der gennemgående er noget, der statistisk set gentager sig ved brugen af disse ord i tekster, m.a.o. hvordan ordene relaterer sig til hinanden i en tekst, ikke ordene i sig selv. Et godt intuitivt eksempel er de egenskaber, der går igen i ordene "mand", "husbond" og "konge", og dem, der går igen i "kvinde", "kone" og "dronning". Nogle egenskaber går igen i højere grad blandt nogle ord, men i lavere grad i andre ord. Disse egenskaber er repræsenteret af en eller flere talpositioner i ordenes vektor, og jo mere en token ligner en anden token i betydning, jo tættere er tallenes indbyrdes forhold. Men egenskaberne er ikke nødvendigvis særligt forståelige for mennesker, som i eksemplet ovenfor; de skal bare være statistisk signifikante for at kunne bevare mening.
+Disse egenskaber er resultatet af, at embeddingmodellen er blevet trænet på helt vilde mængder tekst og har fundet, at der gennemgående er noget, der statistisk set gentager sig ved brugen af disse ord i tekster, m.a.o. hvordan ordene relaterer sig til hinanden i en tekst, ikke ordene i sig selv. Et godt intuitivt eksempel er de egenskaber, der går igen i ordene "mand", "husbond" og "konge", og dem, der går igen i "kvinde", "kone" og "dronning". Nogle egenskaber går igen i højere grad blandt nogle ord, men i lavere grad i andre ord. Disse egenskaber er repræsenteret af en eller flere talpositioner i ordenes vektor, og jo mere en token ligner en anden token i betydning, jo tættere er tallenes indbyrdes forhold. Men egenskaberne er ikke nødvendigvis særligt forståelige for mennesker, som i det særlige eksempel ovenfor; de skal bare være statistisk signifikante for at kunne bevare mening.
 
 Dette er et forsøg på overordnet at forklare den grundlæggende kvantificering af tekst, kaldet embedding, hvor teksten deles op og lægges i vektorer. En hel tekst, altså en rækkefølge af tokens, kan også repræsenteres af en enkelt vektor, som er udregnet ud fra hver af dens tokens vektorer. Så en teksts egen vektor er udregnet fra alle dens tokens vektorer.
 For en bestemt embeddingmodel har de vektorer, som den anvender, et bestemt antal tal, en bestemt længde.
@@ -316,94 +333,100 @@ Prompten sættes sammen af de dele, som retrieval har fundet frem: det nye jobop
 Kravene i prompten er den konkrete implementering af en gennemgående lære fra hele forløbet: en LLM skal fortælles, hvad den *ikke* må gøre, lige så præcist som hvad den skal. Uden det overdriver den, tilføjer og opdigter (*hallucinerer*), og lyder generelt som en chat-AI, som det netop var problemet med mine første prompts.
 Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknologier, kompetencer eller erfaring, der ikke er dokumenteret i kildeteksterne") og en *tilladelse* (den eksplicitte kompetence-whitelist fra retrieval-fasen, som aktivt tillader bestemte ord).
 
->"""
->Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
->  
->Brug de tidligere eksempler som stil- og argumentationsreference.
->Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
->eller er dokumenterede relevante kompetencer hos kandidaten.
->Opfind ikke erfaringer.
->  
->Hard requirements:
->- Skriv på samme sprog som det nye jobopslag.
->- Anvend samme tone og sproglige stil som i kildeteksterne.
->- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
->- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
->- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
->- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
->- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
->- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
->- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
->- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
->- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
->- Fremhæv dokumenterede styrker neutralt og uden forbehold.
->- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor, når de er relevante og kan dokumenteres i kandidatens kildetekster.
->- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne ikke dokumenterer erfaringen. Opfind aldrig erfaring.
->- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
->
->med "Med venlig hilsen,  
->Bob"
->
->=== NYT JOBOPSLAG ===
->
->=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===  
->Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan understøttes af kandidatens dokumenterede erfaring:  
->  ...  
->  ...  
->  
->=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===  
->Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:  
-> --- Kort ansøgnings-eksempel ---  
->  ...  
-> --- Kort ansøgnings-eksempel ---  
->  ...  
-> --- Kort ansøgnings-eksempel ---  
->  ...  
-> --- Kort ansøgnings-eksempel ---  
->  ...  
-> --- Kort ansøgnings-eksempel ---  
->  ...  
->  
->=== HELE TIDLIGERE EKSEMPLER ===  
->Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:  
-> --- Eksempel 1: tidligere jobopslag ---  
->  ...  
-> --- Tilhørende ansøgning ---  
->  ...  
->  
-> --- Eksempel 2: tidligere jobopslag ---  
->  ...  
-> --- Tilhørende ansøgning ---  
->  ...  
->  
->=== KRAV -> SVAR-EKSEMPLER ===  
->Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:  
->--- Kravparagraf ---  
->  ...  
->--- Tilhørende svarparagraf ---  
->  ...  
->  
->--- Kravparagraf ---  
->  ...  
->--- Tilhørende svarparagraf ---  
->  ...  
->  
->--- Kravparagraf ---  
->  ...  
->--- Tilhørende svarparagraf ---  
->  ...  
->  
->"""
+~~~text
+"""
+Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
+  
+Brug de tidligere eksempler som stil- og argumentationsreference.
+Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
+eller er dokumenterede relevante kompetencer hos kandidaten.
+Opfind ikke erfaringer.
+  
+Hard requirements:
+- Skriv på samme sprog som det nye jobopslag.
+- Anvend samme tone og sproglige stil som i kildeteksterne.
+- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
+- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
+- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
+- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
+- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
+- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
+- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
+- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
+- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
+- Fremhæv dokumenterede styrker neutralt og uden forbehold.
+- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor, når de er relevante og kan dokumenteres i kandidatens kildetekster.
+- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne ikke dokumenterer erfaringen. Opfind aldrig erfaring.
+- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
+
+med "Med venlig hilsen,  
+Bob"
+
+=== NYT JOBOPSLAG ===
+
+=== MATCHENDE KOMPETENCER, FÆRDIGHEDER OG KVALITETER ===  
+Disse termer er fundet i det nye jobopslag og må gerne nævnes, når de kan understøttes af kandidatens dokumenterede erfaring:  
+  ...  
+  ...  
+  
+=== KORTE ANSØGNINGSEKSEMPLER MED MATCHENDE KOMPETENCER ===  
+Brug disse korte eksempler på formulering af matchende kompetencer og erfaringsreferencer:  
+ --- Kort ansøgnings-eksempel ---  
+  ...  
+ --- Kort ansøgnings-eksempel ---  
+  ...  
+ --- Kort ansøgnings-eksempel ---  
+  ...  
+ --- Kort ansøgnings-eksempel ---  
+  ...  
+ --- Kort ansøgnings-eksempel ---  
+  ...  
+  
+=== HELE TIDLIGERE EKSEMPLER ===  
+Dette er et eksempel på hele tidligere ansøgningstekster, som kandidaten har skrevet til lignende jobopslag:  
+ --- Eksempel 1: tidligere jobopslag ---  
+  ...  
+ --- Tilhørende ansøgning ---  
+  ...  
+  
+ --- Eksempel 2: tidligere jobopslag ---  
+  ...  
+ --- Tilhørende ansøgning ---  
+  ...  
+  
+=== KRAV -> SVAR-EKSEMPLER ===  
+Her er eksempler på, hvordan kravene i jobopslaget kan besvares i ansøgningsteksten:  
+--- Kravparagraf ---  
+  ...  
+--- Tilhørende svarparagraf ---  
+  ...  
+  
+--- Kravparagraf ---  
+  ...  
+--- Tilhørende svarparagraf ---  
+  ...  
+  
+--- Kravparagraf ---  
+  ...  
+--- Tilhørende svarparagraf ---  
+  ...  
+  
+"""
+~~~
 
 ##### Praktisk erfaring — kontekstlængde.
 I Ollama-klienten kan man sætte "Context length" under Settings. Jeg har den sat til maksimum, fordi de prompts, jeg får genereret, er meget teksttunge og dermed indeholder mange tokens. Dette bør på sigt optimeres.
 
 
-## Fremtidigt / endnu ikke implementeret
+## Forbedringer og fremtidige tiltag
 
-- Systematisering af tilføjelser af ny jobopslag og tilhørende ansøgningstekster.
+
+- Den nuværende løsning anvender stadig en kommerciel LLM til generering af ansøgningstekster, men på sigt er ambitionen at skifte til lokale, offline modeller.
+
+- Eksperimentere med Model Context Protocol (MCP) til at producere evalueringer af ansøgningstekster genereret med forskellige parametre, k-værdier og similarity-thresholds (foreløbig sat ud fra stikprøver, ikke systematisk evalueret).
+
 - Automatisk kvalitetskontrol af genererede ansøgningstekster. De genererede ansøgningstekster som pt. produceres af at anvende prompten på en kommerciel LLM har stadig behov for manuel gennemgang og validering, før de opfylder mine kvalitetskrav. Den data der produceres ved at der generes ansøgninger og jeg retter dem, bør derfor logges og kunne genanvendes til evaluering og forbedring på sigt.
-- Ambitionen er stadig kun at anvende lokale, offline LLM-modeller til generering af ansøgningstekster. Pt. promptes en kommerciel LLM, som står for selve genereringen af ansøgningsteksterne.
-- Asymmetrisk embedding via instruktions-prefix (`query:`/`passage:`, som i fx E5/BGE/GTE-modeller) for bedre krav-svar-matching. Dette er reelt en løsning til den asymmetri, hele Berigelse- og retrieval-fasen pt. kompenserer for med tags og forudberegnede matches: et jobkrav og et ansøgnings-svar er ikke symmetriske tekster (spørgsmål vs. svar), men embeddes i dag med samme model uden retningsspecifik instruktion. En asymmetrisk model, der embedder krav som "query" og svar som "passage", kunne potentielt reducere behovet for dele af tag-laget — men er ikke afprøvet endnu.
-- Justering af k-værdier og similarity-thresholds (foreløbig sat ud fra stikprøver, ikke systematisk evalueret).
-- Eksport af den færdige ansøgningstekst til PDF ( via Puppeteer).
+
+- Asymmetrisk embedding via instruktions-prefix (`query:`/`passage:`, som i fx E5/BGE/GTE-modeller) for bedre krav-svar-matching. Dette er reelt en løsning til den asymmetri, hele Berigelse- og retrieval-fasen pt. kompenserer for med tags og forudberegnede matches: et jobkrav og et ansøgnings-svar er ikke symmetriske tekster (spørgsmål vs. svar), men embeddes i dag med samme model uden retningsspecifik instruktion. En asymmetrisk model, der embedder krav som "query" og svar som "passage", kunne potentielt reducere behovet for dele af tag-laget.
+
+- Undersøge om ansøgningsdata kan bruges til at tilpasse eller træne en lokal DNN-model. Muligivs med finetuning i PyTorch med Sentence Transformers. Det forudsætter tilstrækkelige mængder af data.

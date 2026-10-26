@@ -22,6 +22,18 @@ TEMPLATE = """<!doctype html>
   <script src="site.js" defer></script>
 </head>
 <body>
+  <nav id="navbar" aria-label="Hovedmenu">
+    <button type="button" class="nav-toggle" data-action="toggleTruncate" aria-pressed="true" title="Fold sammen / fold ud">
+      <svg class="icon-on" viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"><path d="M7 4l5 5 5-5M7 20l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="icon-off" viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"><path d="M7 9l5-5 5 5M7 15l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="nav-item">
+      <button type="button" data-action="dropdown" aria-expanded="false">Placeholder</button>
+      <div class="nav-dropdown">
+        <p>Hold this place</p>
+      </div>
+    </div>
+  </nav>
   <main>
     <article id="content">
 {content}

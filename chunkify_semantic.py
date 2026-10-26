@@ -51,6 +51,8 @@ def paragraphize(cases_json: List[dict], embeddingmodel: SentenceTransformer):
 
 
     def paragraphize_sentences(sentences, source, case_id):
+        if not sentences:
+            return []
         # here is where the magic happens
         embeddings = embeddingmodel.encode([s for s in sentences], convert_to_numpy=True, show_progress_bar=True).astype("float32")
         if embeddings.ndim == 1:

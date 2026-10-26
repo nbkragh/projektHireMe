@@ -7,6 +7,7 @@ import fnmatch
 import sys
 import warnings
 import requests
+from case_identity import case_id_from_name, normalize_case_name
 
 """Extract job and app sentence data from HTML and plain text files. Called Ingestion process."""
 
@@ -193,6 +194,7 @@ def process_case_folder(folder: Path) -> dict | None:
 
     return {
         "case": str(os.path.basename(folder)),
+        "case_id": case_id_from_name(folder.name),
         "job_text": job_text,
         "job_sentences": job_sentences,
         "app_text": app_text,
@@ -211,14 +213,22 @@ def load_existing_cases(path: Path) -> list:
             raise SystemExit(1)
 
     if not isinstance(existing_cases_json, list):
-        print(f"'{path}' does not contain a list. Overwriting with a new list.")
-        return []
+        raise ValueError(f"'{path}' does not contain a JSON list.")
+    if not all(isinstance(case, dict) for case in existing_cases_json):
+        raise ValueError(f"'{path}' contains an invalid case entry.")
     return existing_cases_json
 
 
 def upsert_case(existing_cases_json: list, result_case: dict) -> None:
-    old_case = [case for case in existing_cases_json if case["case"] == result_case["case"]]
+    result_identity = normalize_case_name(result_case.get("case"))
+    old_case = [
+        case
+        for case in existing_cases_json
+        if normalize_case_name(case.get("case")) == result_identity
+    ]
     if old_case:
+        if len(old_case) != 1:
+            raise ValueError(f"Duplicate case identity in extracted data: {result_case['case']!r}")
         print(f"Case '{result_case['case']}' eksisterer allerede. Overskriver.")
         existing_cases_json.remove(old_case[0])
     else:

@@ -4,6 +4,7 @@ import sys
 import faiss
 from typing import List
 from sentence_transformers import SentenceTransformer
+from case_identity import case_id_from_name
 """Document Ingestion: rule-based noise removal and canonicalization (case_id assignment)."""
 
 remove_phrases = [
@@ -63,8 +64,8 @@ def cleanup(cases_json: List[dict], embeddingmodel: SentenceTransformer):
         return cleaned_sentences
 
 
-    for case_id, case_json in enumerate(cases_json):
-        case_json["case_id"] = "c"+str(case_id)
+    for case_json in cases_json:
+        case_json["case_id"] = case_id_from_name(case_json.get("case"))
         case_json["job_sentences"] = cleanup_sentences(case_json.get("job_sentences"))
         case_json["app_sentences"] = cleanup_sentences(case_json.get("app_sentences"))
         for expr in remove_phrases:
@@ -82,6 +83,9 @@ def cleanup(cases_json: List[dict], embeddingmodel: SentenceTransformer):
     #print("length of sentences:", len(alle_sætninger))
     #print("length of flatID_to_caseID_mapping:", len(flatID_to_caseID_mapping))
 
+    if not alle_sætninger:
+        return cases_json
+
     textembeddings = embeddingmodel.encode(alle_sætninger, convert_to_numpy=True).astype("float32")
 
     faiss.normalize_L2(textembeddings)
@@ -89,26 +93,27 @@ def cleanup(cases_json: List[dict], embeddingmodel: SentenceTransformer):
     faissindex.add(textembeddings)
 
     sim_threshold=0.85
-    k = 50  # k er antal nearest neighbors der skal returneres, 50 -> søg bredt for at fange tværgående matches
+    k = min(50, len(alle_sætninger))  # Søg bredt for at fange tværgående matches.
     distances, neighbours_ids = faissindex.search(textembeddings, k)
     num_cases = len(cases_json)
-    #gennemgår alle sætningerne
+    remove_indices = set()
     for i in range(len(alle_sætninger)):
         # for hver sætning gennemgå de nærmeste (k) naboer (nearest neighbors), samt afstanden, som Faiss har beregnet for dem
         # og tæl hvor mange af de nærmeste naboer der har en afstand over sim_threshold - der ligner hinanden meget
         matched_cases = set()
         for distance, neighbour_id in zip(distances[i], neighbours_ids[i]):
-            if distance >= sim_threshold:
+            if neighbour_id >= 0 and distance >= sim_threshold:
                 matched_cases.add(alle_sætninger[neighbour_id])
         distinctiveness = 1.0 - (len(matched_cases) / num_cases)
         if distinctiveness < 0.9:
             #print(f"Distinctiveness: {distinctiveness}, matches: {len(matched_cases)}, Index: {i}, sentence: {alle_sætninger[i]},  matched_cases: {matched_cases}")
-            case_id = flatID_to_caseID_mapping[i]["case_id"]
+            case_index = flatID_to_caseID_mapping[i]["case_id"]
             origin = flatID_to_caseID_mapping[i]["origin"]
             sentence_id = flatID_to_caseID_mapping[i]["sentence_id"]
-            #print(f"Cleaned sentence \"{cases_json[case_id][origin][sentence_id]}\" from case_id {case_id}, origin {origin}")
+            remove_indices.add((case_index, origin, sentence_id))
 
-            del cases_json[case_id][origin][sentence_id]
+    for case_index, origin, sentence_id in sorted(remove_indices, reverse=True):
+        del cases_json[case_index][origin][sentence_id]
 
     return cases_json
 

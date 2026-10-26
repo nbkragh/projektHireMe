@@ -156,6 +156,14 @@ def build_indexes(
     for collection_name, (table, text_column) in COLLECTIONS.items():
         rows = fetch_rows(conn, table, text_column)
         if not rows:
+            index_path = faiss_dir / f"{collection_name}.faiss"
+            index_path.unlink(missing_ok=True)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM faiss_id_map WHERE collection_name = %s",
+                    (collection_name,),
+                )
+            conn.commit()
             print(f"[{collection_name}] Ingen tekster; springer over.")
             continue
 

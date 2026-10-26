@@ -35,6 +35,7 @@ import numpy as np
 import psycopg2
 import psycopg2.extras
 from sentence_transformers import SentenceTransformer
+from case_identity import case_id_from_name, normalize_case_name
 
 try:
     from dotenv import load_dotenv
@@ -154,6 +155,10 @@ def validate_paragraphs(
         text = paragraph.get("text")
         if not isinstance(paragraph_id, str) or not paragraph_id:
             raise ValueError(f"Paragraf {index} i {case_id!r} mangler paragraph_id.")
+        if not paragraph_id.startswith(f"{case_id}_"):
+            raise ValueError(
+                f"Paragraf {paragraph_id!r} does not belong to case {case_id!r}."
+            )
         if not isinstance(text, str) or not text.strip():
             raise ValueError(f"Paragraf {paragraph_id!r} mangler tekst.")
 
@@ -296,6 +301,75 @@ def persist_paragraph_matches(
     return total_matches
 
 
+def find_legacy_case_migrations(
+    cases: List[Dict[str, Any]], existing_rows: List[Tuple[str, str]]
+) -> List[Tuple[str, str]]:
+    source_by_identity: Dict[str, Dict[str, Any]] = {}
+    source_by_id: Dict[str, str] = {}
+    for case in cases:
+        name = case.get("case")
+        identity = normalize_case_name(name)
+        if identity in source_by_identity:
+            raise ValueError(
+                f"Cases {source_by_identity[identity]['case']!r} and {name!r} "
+                "have the same folder identity."
+            )
+        expected_id = case_id_from_name(name)
+        previous_identity = source_by_id.get(expected_id)
+        if previous_identity is not None and previous_identity != identity:
+            raise ValueError(f"Stable case ID collision for {name!r}.")
+        if case.get("case_id") != expected_id:
+            raise ValueError(
+                f"Case {name!r} has ID {case.get('case_id')!r}; "
+                f"expected stable ID {expected_id!r}."
+            )
+        source_by_identity[identity] = case
+        source_by_id[expected_id] = identity
+
+    existing_by_id = {case_id: case_name for case_id, case_name in existing_rows}
+    existing_by_identity: Dict[str, List[Tuple[str, str]]] = {}
+    for existing_id, existing_name in existing_rows:
+        identity = normalize_case_name(existing_name)
+        existing_by_identity.setdefault(identity, []).append(
+            (existing_id, existing_name)
+        )
+
+    unknown_names = [
+        name
+        for identity, rows in existing_by_identity.items()
+        if identity not in source_by_identity
+        for _, name in rows
+    ]
+    if unknown_names:
+        raise ValueError(
+            "Database contains cases absent from the authoritative segmented JSON; "
+            "resolve before migrating stable IDs: "
+            + ", ".join(repr(name) for name in unknown_names)
+        )
+
+    migrations = []
+    for identity, case in source_by_identity.items():
+        matches = existing_by_identity.get(identity, [])
+        if len(matches) > 1:
+            raise ValueError(
+                f"Database contains multiple cases matching {case['case']!r}; "
+                "resolve the ambiguity before updating."
+            )
+
+        conflicting_name = existing_by_id.get(case["case_id"])
+        if (
+            conflicting_name is not None
+            and normalize_case_name(conflicting_name) != identity
+        ):
+            raise ValueError(
+                f"Stable case ID {case['case_id']!r} is already assigned to "
+                f"{conflicting_name!r}, not {case['case']!r}."
+            )
+        if matches and matches[0][0] != case["case_id"]:
+            migrations.append((matches[0][0], case["case_id"]))
+    return migrations
+
+
 def persist(
     conn,
     cases: List[Dict[str, Any]],
@@ -304,18 +378,33 @@ def persist(
 ) -> Dict[str, int]:
     counts = {"cases": 0, "documents": 0, "job_paragraphs": 0, "app_paragraphs": 0}
     with conn.cursor() as cursor:
+        cursor.execute("SELECT case_id, case_name FROM cases")
+        existing_rows = cursor.fetchall()
+        migrations = find_legacy_case_migrations(cases, existing_rows)
+        for legacy_id, _ in migrations:
+            cursor.execute("DELETE FROM cases WHERE case_id = %s", (legacy_id,))
+
+        cursor.execute("DELETE FROM job_app_paragraph_matches")
+        cursor.execute("SELECT to_regclass('text_tags')")
+        if cursor.fetchone()[0] is not None:
+            cursor.execute("DELETE FROM text_tags")
+
         for case in cases:
             case_id = upsert_case(cursor, case)
             counts["cases"] += 1
 
             job_text = required_text(case, "job_text")
             app_text = required_text(case, "app_text")
-            if job_text:
-                upsert_document(cursor, "job_documents", case_id, job_text)
-                counts["documents"] += 1
-            if app_text:
-                upsert_document(cursor, "app_documents", case_id, app_text)
-                counts["documents"] += 1
+            if not job_text.strip() or not app_text.strip():
+                raise ValueError(
+                    f"Case {case['case']!r} must contain both a job post and an application."
+                )
+            upsert_document(cursor, "job_documents", case_id, job_text)
+            upsert_document(cursor, "app_documents", case_id, app_text)
+            counts["documents"] += 2
+
+            cursor.execute("DELETE FROM job_paragraphs WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM app_paragraphs WHERE case_id = %s", (case_id,))
 
             counts["job_paragraphs"] += upsert_paragraphs(
                 cursor,
@@ -329,9 +418,11 @@ def persist(
                 case_id,
                 validate_paragraphs(case_id, case.get("app_paragraphs", []), "app_paragraphs"),
             )
-    conn.commit()
+
+        cursor.execute("SELECT case_id FROM cases ORDER BY case_id")
+        all_case_ids = [row[0] for row in cursor.fetchall()]
     counts["paragraph_matches"] = persist_paragraph_matches(
-        conn, model, [case["case_id"] for case in cases], top_n_matches
+        conn, model, all_case_ids, top_n_matches
     )
     conn.commit()
     return counts
