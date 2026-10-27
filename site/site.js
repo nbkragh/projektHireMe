@@ -46,8 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }, { passive: true });
 
   const root = document.getElementById("content");
-  const truncs = root.querySelectorAll('[class="truncate"]');
-  truncs.forEach((h) => h.addEventListener("click", () => h.classList.toggle("expanded")));
+  const truncs = root.querySelectorAll('#content .truncate');
+  truncs.forEach((h) => h.addEventListener("click", () => h.classList.toggle("expanded", !h.classList.contains("expanded"))));
 
 
   // fold teksten ud, hvis man lander på et #anker på en h6

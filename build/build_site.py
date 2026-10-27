@@ -61,15 +61,16 @@ def main() -> None:
             if sibling.name in headings:
                 break
             content.append(sibling)
-        if not content:
+        if len(content) == 0:
             continue
         wrap = soup.new_tag("div", attrs={"class": ["truncate", "expanded"]})
-        heading.insert_after(wrap)
+        
         if sum(len(str(el)) for el in content) < 500:
             #print(f"Skipping truncation for heading: {heading.text}")
             continue
         for el in content:
             wrap.append(el)  # append flytter elementet ind i div'en
+        heading.insert_after(wrap)
     html = str(soup)
     if DIST.exists():
         shutil.rmtree(DIST)
