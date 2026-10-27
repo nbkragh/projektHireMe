@@ -4,7 +4,7 @@ const navActions = {
   toggleTruncate(e, btn) {
     const on = btn.getAttribute("aria-pressed") !== "true";
     btn.setAttribute("aria-pressed", on);
-    document.querySelectorAll("#content .truncate").forEach((t) => t.classList.toggle("expanded", !on));
+    document.querySelectorAll("#content .truncate").forEach((t) => t.classList.toggle("expanded", on));
   },
   dropdown(e, btn) {
     const panel = btn.parentElement.querySelector(".nav-dropdown");

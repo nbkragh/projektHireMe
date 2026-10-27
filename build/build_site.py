@@ -16,8 +16,8 @@ TEMPLATE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>projektHireMe</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manufacturing+Consent&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quintessential&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="site.css">
   <script src="site.js" defer></script>
 </head>
@@ -63,10 +63,10 @@ def main() -> None:
             content.append(sibling)
         if not content:
             continue
-        wrap = soup.new_tag("div", attrs={"class": "truncate"})
+        wrap = soup.new_tag("div", attrs={"class": ["truncate", "expanded"]})
         heading.insert_after(wrap)
         if sum(len(str(el)) for el in content) < 500:
-            print(f"Skipping truncation for heading: {heading.text}")
+            #print(f"Skipping truncation for heading: {heading.text}")
             continue
         for el in content:
             wrap.append(el)  # append flytter elementet ind i div'en
@@ -75,7 +75,12 @@ def main() -> None:
         shutil.rmtree(DIST)
     DIST.mkdir()
     for f in SITE.iterdir():
-        shutil.copy(f, DIST / f.name)
+        if f.is_dir():
+            shutil.copytree(f, DIST / f.name)
+        else:
+            shutil.copy(f, DIST / f.name)
+    # README refererer til site/img/…, men i dist ligger billederne i img/
+    html = html.replace("site/img/", "img/")
     (DIST / "index.html").write_text(TEMPLATE.format(content=html), encoding="utf-8")
     print(f"Skrev {DIST / 'index.html'}")
 

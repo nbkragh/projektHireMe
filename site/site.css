@@ -35,8 +35,9 @@ img, video, table { max-width: 100%; }
 pre, table { overflow-x: auto; }
 
 h1, h2, h3, h4, h5, h6 {
-    font-family: "Manufacturing Consent", sans-serif;
-    font-weight: lighter;
+    font-family: "Quintessential", serif;
+    font-weight: bold;
+    font-style: normal;
     overflow-wrap: anywhere;
     color: transparent;
   -webkit-background-clip: text;
@@ -108,6 +109,7 @@ pre code { background: none; color: inherit; padding: 0; }
   display:flex;
   flex-direction: row;
   align-items:center;
+  justify-content: space-around;
   gap:.5rem;
   padding:0 6vw;
   background:rgba(250,250,250,.95);
@@ -129,6 +131,7 @@ pre code { background: none; color: inherit; padding: 0; }
   position:absolute;
   top:100%;
   left:0;
+  right: 0;
   width:30vw;
   height:30vh;
   max-width:96vw;
@@ -143,3 +146,9 @@ pre code { background: none; color: inherit; padding: 0; }
 .nav-toggle{display:inline-flex;align-items:center}
 .nav-toggle .icon-off,.nav-toggle[aria-pressed=false] .icon-on{display:none}
 .nav-toggle[aria-pressed=false] .icon-off{display:inline}
+
+picture {
+  display: block;
+  max-width: 100%;
+  margin: 1rem clamp(1rem, 4vw, 6rem);
+}

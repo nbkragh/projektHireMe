@@ -56,6 +56,15 @@ Tidligere jobopslag sammen med de ansøgninger, som jeg har sendt til dem, betra
 
 Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipeline, den udgør. De enkelte faser er beskrevet nærmere i [Building](#building):
 
+<a href="site/img/pipeline_diagram.svg">
+  <picture>
+    <source type="image/svg+xml" srcset="site/img/pipeline_diagram.svg">
+    <img src="site/img/pipeline_diagram.png" alt="Pipeline-diagram: scripts, JSON-artefakter, PostgreSQL og FAISS" width="900">
+  </picture>
+</a>
+
+*klik for at forstørre*
+
 **1. Ingestion** ([afsnit](#ingestion))
 - Gennemgår alle opslag og ansøgninger parvis, som en "case", og søger relevante filer via bestemte navnemønstre.
 - Udtrækker ren tekst fra `.txt`-filer og fra `.html`-filer (som er blevet brugt til at rendere PDF'er ud fra). Trimmer og samler teksten som strings.
@@ -257,6 +266,16 @@ PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, eft
 - `text_tags` — koblingen mellem en tagget tekstenhed (dokument eller paragraf) og dens tags, med score og rang inden for kategorien.
 - `faiss_id_map` — bro-tabellen mellem en FAISS-indeksposition og den oprindelige databaserække.
 
+Diagrammet viser tabellerne, deres relationer og hvordan en forespørgsel mappes fra FAISS til tabellerne 
+
+<a href="site/img/persistering_er_diagram.svg">
+  <picture>
+    <source type="image/svg+xml" srcset="site/img/persistering_er_diagram.svg">
+    <img src="site/img/persistering_er_diagram.png" alt="ER-diagram over persisteringen i PostgreSQL og forespørgselsflowet gennem FAISS" width="900">
+  </picture>
+</a>
+
+*klik for at forstørre*
 
 #### FAISS-indeksering
 ##### Teori — hvad er FAISS.
@@ -289,7 +308,7 @@ Her søges der pr. paragraf i det nye opslag. Hver forespørgselsparagraf embedd
 Selve søgningen med embedded-similarity sker kun blandt jobopslag og jobparagraffer; ansøgningsteksterne søges der aldrig direkte efter. Krav-svar-parrene er nemlig allerede fundet og gemt i databasen, så retrieval skal blot følge koblingen fra den fundne opslagstekst til dens svar, ansøgningsteksten. På dokumentniveau er koblingen case-id'et: det fundne jobopslag og den ansøgning, jeg sendte til det, hører til samme case, og ansøgningen hentes direkte. 
 På paragrafniveau er koblingen finere. Under Persistering er op til tre ansøgningsparagraffer indenfor samme case, der bedst besvarer en jobparagraf, allerede matchet. Når en lingende jobopslags-paragraf er udvalgt efter rangering (se ovenfor), vælger retrieval blandt dens persisteerede svarkandidater det, der har flest fælles tags med det nye hele opslag (igen ikke bare med paragraffen). Resultatet er et krav-svar-par: der består af en tidligere jobparagraf og den ansøgningsparagraf, der både matcher jobparagraffen og det nye opslag bedst. 
 
-##### Paragraffer er krav-til-svar koblet inden for samme case
+##### Paragraffer er *krav-til-svar* koblet inden for samme case
 At begrænse den matchingen af jobopslagsparagraffer og ansøgningsparagraffer til én case ad gangen, frem for hele korpusset, er bevidst. Inden for én allerede matchet case er den passage i ansøgningen, der rent faktisk besvarer et givent krav, den mest pålidelige grundsandhed, systemet har, fordi et menneske (mig selv) netop brugte den ansøgning til at besvare netop det opslag. Det har også en praktisk fordel: fordi krav-svar-matchene blev forudberegnet i Berigelse-fasen, er paragrafniveauet et billigt opslag i databasen. Alternativet var en dyr beregning under query-time af ligheden mellem hver jobparagraf og hver ansøgningsparagraf i hele korpusset.
 
 ##### Diversitetsudvælgelse.
