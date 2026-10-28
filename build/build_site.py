@@ -27,6 +27,7 @@ TEMPLATE = """<!doctype html>
       <svg class="icon-on" viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"><path d="M7 4l5 5 5-5M7 20l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <svg class="icon-off" viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"><path d="M7 9l5-5 5 5M7 15l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <a target="_blank" rel="noopener noreferrer" href="https://github.com/nbkragh/projektHireMe" class="nav-item">github.com/nbkragh/projektHireMe</a>
     <div class="nav-item">
       <button type="button" data-action="dropdown" aria-expanded="false">Placeholder</button>
       <div class="nav-dropdown">

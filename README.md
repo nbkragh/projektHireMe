@@ -56,7 +56,7 @@ Tidligere jobopslag sammen med de ansøgninger, som jeg har sendt til dem, betra
 
 Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipeline, den udgør. De enkelte faser er beskrevet nærmere i [Building](#building):
 
-<a href="site/img/pipeline_diagram.svg">
+<a target="_blank" rel="noopener noreferrer" href="site/img/pipeline_diagram.svg">
   <picture>
     <source type="image/svg+xml" srcset="site/img/pipeline_diagram.svg">
     <img src="site/img/pipeline_diagram.png" alt="Pipeline-diagram: scripts, JSON-artefakter, PostgreSQL og FAISS" width="900">
@@ -114,14 +114,7 @@ Løsningen, som den ser ud i skrivende stund, er beskrevet herunder som den pipe
 
 #### Opdatering med nye case-mapper
 
-Når et nyt jobopslag og den tilhørende ansøgning er lagt i en undermappe under `EKSPORT_ROOT`, kan den eksisterende pipeline opdateres samlet:
-
-```powershell
-python update_pipeline.py --dry-run
-python update_pipeline.py
-```
-
-Opdateringen sammenligner mappenavnene med `extracted_sentences.json` og sender kun nye, komplette opslag/ansøgnings-par gennem ingestion. Mapper uden begge dokumenter springes over og kan behandles, når parret er komplet. Opdateringen er bevidst begrænset til nye mapper; ændringer af allerede kendte mapper og sletning af mapper spejles ikke automatisk.
+En opdateringen af hele korpusset sammenligner mappenavnene med `extracted_sentences.json` og sender kun nye, komplette opslag/ansøgnings-par gennem ingestion. Mapper uden begge dokumenter springes over og kan behandles, når parret er komplet. Opdateringen er bevidst begrænset til nye mapper; ændringer af allerede kendte mapper og sletning af mapper spejles ikke automatisk.
 
 Efter ingestion bruger cleanup hele den nyeste `extracted_sentences.json`, og semantisk chunking genskaber `segmented_and_ready.json` for hele korpusset. PostgreSQL opdateres transaktionelt, inklusive en fuld genberegning af krav-svar-paragrafferne. Den aktuelle `tags_taxonomy.json` indlæses, hvorefter alle tekster tagges igen, og alle FAISS-indeks genopbygges fra PostgreSQL. De fulde genberegninger bevarer samme corpus-wide logik som den oprindelige pipeline og gør det muligt at genoptage efter en fejl ved at køre scriptet igen.
 
@@ -258,6 +251,7 @@ Et *tag* som "programmeringssprog" gælder enten for en tekst eller ikke, uanset
 PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, efter de er blevet bearbejdet i ingestion-fasen, sammen med de semantisk sammenhængende paragraffer der udvundet fra teksterne, og *tag*-taksonomien, samt relationelle tabeller, hvor FAISS-indeksene i næste fase er en afledning, der kan genopbygges fra databasen.
 
 **Tabeller**
+
 - `cases` — én række pr. case (jobopslag og ansøgning som ét par).
 - `job_documents` / `app_documents` — hele teksten pr. case, 1:1 med `cases`.
 - `job_paragraphs` / `app_paragraphs` — de semantisk segmenterede paragraffer, 1:N pr. case.
@@ -268,7 +262,7 @@ PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, eft
 
 Diagrammet viser tabellerne, deres relationer og hvordan en forespørgsel mappes fra FAISS til tabellerne 
 
-<a href="site/img/persistering_er_diagram.svg">
+<a target="_blank" rel="noopener noreferrer" href="site/img/persistering_er_diagram.svg">
   <picture>
     <source type="image/svg+xml" srcset="site/img/persistering_er_diagram.svg">
     <img src="site/img/persistering_er_diagram.png" alt="ER-diagram over persisteringen i PostgreSQL og forespørgselsflowet gennem FAISS" width="900">
