@@ -18,17 +18,17 @@ Men det er ikke nok at nøjes med at gå et metaniveau op og lave en fast copy-p
 I stedet har jeg, ved hjælp af vibe-coding, agentic development, AI-Assisted Software Engineering eller hvad det end bliver kaldt nu om dage, udviklet et RAG-setup, som dynamisk sammensætter en prompt med citater fra tidligere ansøgninger, skræddersyet til netop dét jobopslag, jeg vil søge - se, dét er meta!
 
 #### Forrige arbejdsmetoder
-Min tidligere arbejdsproces med at skrive ansøgninger bestod af:
-- at have en omfattende liste af genanvendelige paragraffer fra tidligere ansøgninger samlet i et tekstdokument. Til at samle denne liste havde jeg bedt en LLM om at gennemgå alle mine ansøgninger og finde eksempler på de mest anvendte formuleringer af kompetence-matches, motivationer, personlige kvaliteter osv.
-- at bruge et script til at udtrække et sæt af disse genanvendelige paragraffer, som matcher opslagsteksten, med Jaccard-overlap (mængde-lighed mellem ordsæt).
+Min tidligere arbejdsproces med at skrive ansøgninger bestod af:  
+- at have en omfattende liste af genanvendelige paragraffer fra tidligere ansøgninger samlet i et tekstdokument. For at kompilere denne liste havde jeg bedt en LLM om at gennemgå alle mine ansøgninger og finde eksempler på de mest anvendte formuleringer af kompetence-matches, motivationer, personlige kvaliteter osv.  
+- at bruge et script til at udtrække et sæt af disse genanvendelige paragraffer, som matcher det stillingsopslag som jeg vil søge, med Jaccard-overlap (mængde-lighed mellem ordsæt).  
 - at prompte en LLM om at skrive en ansøgning med disse paragraffer citeret som eksempler.
 
-Kvaliteten af de genererede ansøgninger var dog meget svingende, og det endte oftest med, at jeg redigerede teksten og fjernede usandheder så meget, at en manuel copy-paste-arbejdsproces kunne være hurtigere.
-Problemet var, at eksempelparagrafferne fra mine tidligere ansøgninger udelukkende var udvalgt baseret på flest matchende ord og dermed kunne indeholde uhensigtsmæssige ord, f.eks. nævnte kompetencer, som ikke var relevante for jobopslaget. I det hele taget var der for meget støj og for lidt kontrol over, hvilke paragraffer der blev udvalgt som relevante eksempler.
+Kvaliteten af de genererede ansøgninger var dog meget svingende, og det endte oftest med, at jeg redigerede teksten og fjernede usandheder, så meget, at en manuel copy-paste-arbejdsproces ville være hurtigere.
+Problemet var, at eksempelparagrafferne fra mine tidligere ansøgninger udelukkende var udvalgt baseret på flest matchende *ord*, og ikke nødvendigvis specifikt på de relevante kompetencer og kvaliteter, f.eks. almindelige formuleringer og forholdsord og stopord, som ikke var relevante for jobopslagets krav. I det hele taget var der for meget støj og for lidt kontrol over, hvilke paragraffer der blev udvalgt som relevante eksempler.
 Desuden var promptinstrukserne ikke præcise og strikse nok til at forhindre LLM'en i at overdrive, tilføje og generelt lyde som — ja — en chat-AI.
 
-### Use Case
-*Jeg vil som bruger kunne copy-paste teksten fra et jobopslag som input og som output få returneret en ansøgningstekst, hvis ordlyd, skrivestil og kompetence-match så vidt muligt minder om min egen.*
+### Use Case for projektet
+"*Jeg vil som bruger kunne copy-paste teksten fra et jobopslag som input og som output få returneret en ansøgningstekst, hvis ordlyd, skrivestil og kompetence-match så vidt muligt minder om min egen.*"
 
 ### Problemstilling
 Hvordan kan tidligere formuleringer i ansøgninger, der matcher bestemte kompetencer og kvaliteter, som er efterspurgte i et givent jobopslag, søges frem, kombineres og genbruges i en ny ansøgning?
@@ -43,7 +43,7 @@ Tidligere jobopslag sammen med de ansøgninger, som jeg har sendt til dem, betra
 - En vis grad af kvalitet i outputteksten.
 
 ### Ressourcer
-- 50+ jobopslag og ansøgninger samlet som krav-svar-par.
+- 50+ jobopslag og ansøgninger samlet som jobopslag-og-ansøgnings-par, som matchende krav-til-svar-par.
 - Softwareudviklerkompetencer og erfaring; Python-scripting og SQL er særligt relevante i dette projekt.
 - NVIDIA GeForce RTX 3070.
 - Internet: 780 Mbps.
@@ -252,13 +252,13 @@ PostgreSQL er brugt til at persistere alle opslags -og ansøgningsteksterne, eft
 
 **Tabeller**
 
-- `cases` — én række pr. case (jobopslag og ansøgning som ét par).
-- `job_documents` / `app_documents` — hele teksten pr. case, 1:1 med `cases`.
-- `job_paragraphs` / `app_paragraphs` — de semantisk segmenterede paragraffer, 1:N pr. case.
-- `job_app_paragraph_matches` — de forudberegnede krav-svar-par: de bedst matchende ansøgningsparagraffer pr. jobparagraf.
-- `taxonomy_metadata`, `tags`, `tag_seeds` — selve tag-taksonomien med kategorier, tags og seed-eksempler.
-- `text_tags` — koblingen mellem en tagget tekstenhed (dokument eller paragraf) og dens tags, med score og rang inden for kategorien.
-- `faiss_id_map` — bro-tabellen mellem en FAISS-indeksposition og den oprindelige databaserække.
+- *cases* — én række pr. case (jobopslag og ansøgning som ét par).
+- *job_documents* / *app_documents* — hele teksten pr. case, 1:1 med *cases*.
+- *job_paragraphs* / *app_paragraphs* — de semantisk segmenterede paragraffer, 1:N pr. case.
+- *job_app_paragraph_matches* — de forudberegnede krav-svar-par: de bedst matchende ansøgningsparagraffer pr. jobparagraf.
+- *taxonomy_metadata*, *tags*, *tag_seeds* — selve tag-taksonomien med kategorier, tags og seed-eksempler.
+- *text_tags* — koblingen mellem en tagget tekstenhed (dokument eller paragraf) og dens tags, med score og rang inden for kategorien.
+- *faiss_id_map* — bro-tabellen mellem en FAISS-indeksposition og den oprindelige databaserække.
 
 Diagrammet viser tabellerne, deres relationer og hvordan en forespørgsel mappes fra FAISS til tabellerne 
 
@@ -273,7 +273,11 @@ Diagrammet viser tabellerne, deres relationer og hvordan en forespørgsel mappes
 
 #### FAISS-indeksering
 ##### Teori — hvad er FAISS.
-FAISS (Facebook AI Similarity Search) er et bibliotek bygget specifikt til hurtig nearest-neighbor-søgning blandt store mængder vektorer, det giver et ensartet API til at bygge, gemme, indlæse og søge et indeks, uanset datamængde. I projektet her er det anvendt til at opbygge en indeksering af teksterne i databaserne, sådan at en vilkårlig tekst kan embeddes til en vektorer og gives som input til FAISS API, som kan slå indeks op der er mapppet til rækker i databasen. FAISS gør det simpelthen muligt at søge med embedding-similarity, som klausul i en databaseforespørgsel. Her er det vigtigt at den samme embedding-model anvendes både ved opbygning af FAISS-indekset og ved forespørgsler, ellers vil similarity-scoren ikke være meningsfuld.
+FAISS (Facebook AI Similarity Search) er et bibliotek bygget specifikt til hurtig nearest-neighbor-søgning blandt store mængder vektorer, det giver et ensartet API til at bygge, gemme, indlæse og søge et indeks, uanset datamængde. I projektet her er det anvendt til at opbygge en indeksering af teksterne i databaserne, sådan at en vilkårlig tekst kan embeddes til en vektorer og gives som input til FAISS API, som kan slå indeks op der er mapppet til rækker i databasen. FAISS gør det simpelthen muligt at søge med embedding-similarity, som klausul i en databaseforespørgsel.  
+~~~text
+-- Det er som at have en database af tekster, som du kan lave forespørgsler på med et stykke tekst som input. Hvor det der returneres, er de mest relevente tekster i følge den embedding model der er anvendt. --
+~~~
+Her er det vigtigt at den samme embedding-model anvendes både ved opbygning af FAISS-indekset og ved forespørgsler, ellers vil similarity-scoren ikke være meningsfuld.
 
 ##### Implementering — 2 separate indeks
 I stedet for ét stort, fælles indeks bygges der 2 adskilte *collections*: `job_documents`, `job_paragraphs`. Dette sikrer, at sammenligninger altid sker inden for samme type tekst (dokument vs. paragraf), hvilket anvendes som grundlag for den samlede retrieval-strategi, der skal nemlig gives eksempler på tekster i form af både hele dokumenter og paragraffer til LLM'en, der skal skrive en ny ansøgning. Men de skal ikke fremsøges på tværs af disse typer. Ansøgningsteksterne skal heller ikke fremsøges, da de er knyttet til jobopslags-teksterne i databasen, så de kan matches korrekt under retrieval.

@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // opacity: 1 øverst og ved scroll op; falder gradvist ved scroll ned
   let lastY = window.scrollY, op = 1;
-  const fade = 300; // px scroll for fuld fade
+  const fade = 400; // px scroll for fuld fade
   window.addEventListener("scroll", () => {
     const y = window.scrollY, dy = y - lastY;
     lastY = y;
@@ -47,7 +47,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const root = document.getElementById("content");
   const truncs = root.querySelectorAll('#content .truncate');
-  truncs.forEach((h) => h.addEventListener("click", () => h.classList.toggle("expanded", !h.classList.contains("expanded"))));
+  const HOLD_MS = 250, DRAG_PX = 5;
+  let down = null;
+  // hold og drag skal ikke aktiverer .truncable
+  document.addEventListener("mousedown", (e) => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
+  const isHoldOrDrag = (e) => {
+    if (down && (Date.now() - down.t > HOLD_MS || Math.hypot(e.clientX - down.x, e.clientY - down.y) > DRAG_PX)) return true;
+    const sel = window.getSelection();
+    return !!sel && !sel.isCollapsed; // tekstmarkering efter træk
+  };
+  truncs.forEach((h) => h.addEventListener("click", (e) => {
+    if (isHoldOrDrag(e)) return;
+    h.classList.toggle("expanded", !h.classList.contains("expanded"));
+  }));
 
 
   // fold teksten ud, hvis man lander på et #anker på en h6
