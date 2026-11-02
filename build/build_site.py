@@ -15,9 +15,18 @@ TEMPLATE = """<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>projektHireMe</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Quintessential&display=swap" rel="stylesheet">
+    <meta name="description" content="Sådan brugte jeg RAG few-shot prompt-engineering og lokale sprog-modeller til at effektivisere mine jobansøgninger">
+    <meta name="google-site-verification" content="QZ2IGpCfK4LfHnO70yYtOqGJFKeZ1ZYHyKpfhEXoPKA" />
+    <link rel="canonical" href="https://nbkragh.github.io/projektHireMe/">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="projektHireMe – RAG til automatiserede jobansøgninger">
+    <meta property="og:description" content="Et projekt med RAG, few-shot prompt-engineering og lokale sprog-modeller, Ollama">
+    <meta property="og:url" content="https://nbkragh.github.io/projektHireMe/">
+    <meta property="og:image" content="https://nbkragh.github.io/projektHireMe/img/scribes.jpg">
+    <meta property="og:image:alt" content="Illustration og visualisering af autogenering af jobansøgninger">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quintessential&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="site.css">
   <script src="site.js" defer></script>
 </head>
