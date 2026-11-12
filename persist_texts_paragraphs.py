@@ -395,10 +395,14 @@ def persist(
 
             job_text = required_text(case, "job_text")
             app_text = required_text(case, "app_text")
-            if not job_text.strip() or not app_text.strip():
-                raise ValueError(
-                    f"Case {case['case']!r} must contain both a job post and an application."
-                )
+            try:
+                if not job_text.strip() or not app_text.strip():
+                    raise ValueError(
+                        f"Case {case['case']!r} must contain both a job post and an application."
+                    )
+            except:
+                print(f"Skipping case {case['case']!r} due to missing job or application text.")
+                continue
             upsert_document(cursor, "job_documents", case_id, job_text)
             upsert_document(cursor, "app_documents", case_id, app_text)
             counts["documents"] += 2

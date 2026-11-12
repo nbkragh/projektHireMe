@@ -15,6 +15,7 @@ TEMPLATE = """<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>projektHireMe</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <meta name="description" content="Sådan brugte jeg RAG few-shot prompt-engineering og lokale sprog-modeller til at effektivisere mine jobansøgninger">
     <meta name="google-site-verification" content="QZ2IGpCfK4LfHnO70yYtOqGJFKeZ1ZYHyKpfhEXoPKA" />
     <link rel="canonical" href="https://nbkragh.github.io/projektHireMe/">
@@ -28,6 +29,7 @@ TEMPLATE = """<!doctype html>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Quintessential&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="hal2026.css">
   <script src="site.js" defer></script>
 </head>
 <body>
@@ -39,8 +41,16 @@ TEMPLATE = """<!doctype html>
     <a target="_blank" rel="noopener noreferrer" href="https://github.com/nbkragh/projektHireMe" class="nav-item">github.com/nbkragh/projektHireMe</a>
     <div class="nav-item">
       <button type="button" data-action="dropdown" aria-expanded="false">Placeholder</button>
-      <div class="nav-dropdown">
-        <p>Hold this place</p>
+      <div class="nav-dropdown hal-dropdown">
+        <div id="hal" class="circular">
+          <div class="ring circular"></div>
+          <div class="oculus circular">
+            <div class="iris circular narrow"></div>
+            <div class="iris circular wide"></div>
+            <div class="highlight prime"></div>
+            <div class="highlight secunda"></div>
+          </div>
+        </div>
       </div>
     </div>
   </nav>

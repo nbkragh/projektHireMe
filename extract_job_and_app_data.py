@@ -74,7 +74,9 @@ def extract_text_from_plain(file_path: Path) -> str:
 def extract_text(file_path: Path) -> str:
     if file_path.suffix.lower() == ".html":
         return extract_text_from_html(file_path)
-    return extract_text_from_plain(file_path)
+    if file_path.suffix.lower() == ".txt":
+        return extract_text_from_plain(file_path)
+    return ""
 
 
 def find_matching_files(folder: Path, patterns, extensions=None):
@@ -176,8 +178,8 @@ def process_case_folder(folder: Path) -> dict | None:
     job_patterns = ["*opslag*"]
     app_patterns = ["*ansøgning*", "*cover*"]
 
-    job_files = find_matching_files(folder, job_patterns)
-    app_files = find_matching_files(folder, app_patterns)
+    job_files = find_matching_files(folder, job_patterns, extensions=[".txt", ".html"])
+    app_files = find_matching_files(folder, app_patterns, extensions=[".txt", ".html"])
 
     if not job_files:
         print(f"  [{folder.name}] Ingen jobopslags-fil fundet. Springer over.")

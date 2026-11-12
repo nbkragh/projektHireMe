@@ -1,0 +1,153 @@
+.circular, 
+#hal .ring:before,
+#hal .oculus .iris {
+  border-radius: 100%;
+}
+
+
+.hal-label > span {
+  display: block;
+  float: left;
+  line-height: 1;
+  padding: 0.45455em;
+  width: 50%;
+}
+
+.hal-label .name {
+  color: #f0f0f0;
+  padding-left: 1.36364em;
+  text-align: right;
+}
+
+.hal-label .version {
+  text-align: left;
+}
+
+.nav-dropdown.hal-dropdown {
+  box-sizing: border-box;
+  background-color: black;
+  container-type: size;
+  width: 12rem;
+  height: 12rem;
+  width: min(12rem, calc(100vw - 2 * clamp(.5rem, 4vw, 2rem)), calc(100vh - max(6vh, 2.5rem)));
+  height: min(12rem, calc(100vw - 2 * clamp(.5rem, 4vw, 2rem)), calc(100vh - max(6vh, 2.5rem)));
+}
+
+#hal {
+  --iris-x: 50%;
+  --iris-y: 50%;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+#hal .ring {
+  background-color: #666;
+  background-image: radial-gradient(circle farthest-corner at 85% 15%, #fff, #a9a9a9 20%, #595959 40%, #b3b3b3 65%, #666);
+  width: 100%;
+  height: 100%;
+}
+
+#hal .oculus {
+  background-color: #000;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-width: 0.625cqw;
+  height: 80%;
+  left: 50%;
+  margin: -40% 0 0 -40%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  overflow: hidden;
+  position: absolute;
+  top: 50%;
+  width: 80%;
+}
+
+#hal .oculus .iris {
+  display: block;
+  height: 100%;
+  width: 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+}
+
+/* --iris-x and --iris-y can be set on #hal from JavaScript. */
+#hal .oculus .iris.narrow {
+  background-color: #c80901;
+  background-image: -webkit-radial-gradient(center center, circle cover, #fff063 2%, #fa0c02 10%, #c80901 30%, #310200 55%, #000000 85%);
+  background-image: -moz-radial-gradient(center center, circle cover, #fff063 2%, #fa0c02 10%, #c80901 30%, #310200 55%, #000000 85%);
+  background-image: -o-radial-gradient(center center, circle cover, #fff063 2%, #fa0c02 10%, #c80901 30%, #310200 55%, #000000 85%);
+  background-image: radial-gradient(circle farthest-corner at center, #fff063 2%, #fa0c02 10%, #c80901 30%, #310200 55%, #000000 85%);
+  background-image: radial-gradient(circle farthest-corner at var(--iris-x, 50%) var(--iris-y, 50%), #fff063 2%, #fa0c02 10%, #c80901 30%, #310200 55%, #000000 85%);
+}
+
+#hal .oculus .iris.wide {
+  background-color: #c80901;
+  background-image: -webkit-radial-gradient(center center, circle cover, #fff063 5%, #fa0c02 15%, #c80901 40%, #0c0000 65%, #000000 85%);
+  background-image: -moz-radial-gradient(center center, circle cover, #fff063 5%, #fa0c02 15%, #c80901 40%, #0c0000 65%, #000000 85%);
+  background-image: -o-radial-gradient(center center, circle cover, #fff063 5%, #fa0c02 15%, #c80901 40%, #0c0000 65%, #000000 85%);
+  background-image: radial-gradient(circle farthest-corner at center, #fff063 5%, #fa0c02 15%, #c80901 40%, #0c0000 65%, #000000 85%);
+  background-image: radial-gradient(circle farthest-corner at var(--iris-x, 50%) var(--iris-y, 50%), #fff063 5%, #fa0c02 15%, #c80901 40%, #0c0000 65%, #000000 85%);
+  -webkit-animation: pulse 2s ease-in-out infinite alternate;
+  -moz-animation: pulse 2s ease-in-out infinite alternate;
+  -ms-animation: pulse 2s ease-in-out infinite alternate;
+  -o-animation: pulse 2s ease-in-out infinite alternate;
+  animation: pulse 2s ease-in-out infinite alternate;
+}
+
+@-webkit-keyframes pulse {
+  from { opacity: 1; }
+  to { opacity: .95; }
+}
+
+@keyframes pulse {
+  from { opacity: 1; }
+  to { opacity: .95; }
+}
+
+#hal .highlight {
+  
+  border-radius: 100%;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 1.875cqw rgba(255, 255, 255, 0.12);
+  height: 8%;
+  margin-left: -12%;
+  position: absolute;
+  top: 6%;
+  width: 24%;
+}
+
+#hal .highlight:before, #hal .highlight:after {
+  border-radius: 100%;
+  left: 50%;
+  position: absolute;
+}
+#hal .highlight.prime {
+  background-color: rgba(255, 255, 255, 0.12);
+  left: 75%;
+  margin-left: 0;
+  top: 30%;
+  -webkit-transform: rotate(60deg);
+  -moz-transform: rotate(60deg);
+  -o-transform: rotate(60deg);
+  -ms-transform: rotate(60deg);
+  transform: rotate(60deg);
+}
+#hal .highlight.secunda{
+  height: 10%;
+  margin-left: -10%;
+  background-color: rgba(255, 255, 255, 0.25);
+  left: 74%;
+  margin-left: 0;
+  top: 18%;
+  
+  width: 14%;
+  -webkit-transform: rotate(50deg);
+  -moz-transform: rotate(50deg);
+  -o-transform: rotate(50deg);
+  -ms-transform: rotate(50deg);
+  transform: rotate(50deg);
+}
