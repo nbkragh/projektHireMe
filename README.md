@@ -111,32 +111,32 @@ Fri tekst fra jobopslag og ansøgninger er fyldt med støj: overskrifter uden pu
 En simpel regex er ikke tilstrækkelig til at definere og opdele en tekst i sætninger; det er for omstændigt at forudsige alle de tekstmæssige muligheder, der er for at afgrænse en sætning. F.eks. ville specielle tegn som `:`/`!`/`?`, forkortelser, bullet-punkter uden slutpunktum, tal, bindestregssammensætninger osv. være for omfattende at inkludere. Det ville blive en løbende forbedringsproces. Derfor bruges her i stedet en forespørgsel til en lokal LLM til selve sætningsopdelingen — men kun til opdelingen, ikke til at omskrive eller opsummere teksten.
 
 ##### Statistisk tekstanalyse med LLM
-Ollama kaldes til at prompte LLM-modellen `hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL`, hentet fra huggingface.co, med følgende prompt, hvor begrænsningerne er sat helt konkret, og begrebet "sætning" er defineret som følger:
+Ollama bruges til at prompte LLM-modellen `hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL` ( hentet fra huggingface.com), med følgende prompt, hvor begrænsningerne er sat helt konkret, og begrebet "sætning" er defineret:
 
->
+
 >OPGAVE:
 >Din opgave er at analysere og opdele det nedenstående TEKST-segment, så resultatet opfylder de VIGTIGE KRAV.
 >
 >TEKST:
 >{`text`}
->
->VIGTIGE KRAV:
->- En sætning er en komplet grammatisk enhed, der giver semantisk mening alene, som er afsluttet med ".", "?" eller "!".
->- Opdel teksten i TEKST-segmentet ovenfor i sætninger,
->- Sætningerne skal være trimmed for whitespace.
->- returner teksten nøjagtigt som den fremstår i kilden, ingen ændringer eller fortolkninger.
->- returner IKKE tomme sætninger
->- returner IKKE sætninger der kun indeholder whitespace.
->- returner IKKE sætninger der indeholder metadata.
->- returner IKKE sætninger der indeholder URL'er.
->- returner IKKE sætninger der indeholder kontaktoplysninger.
->- returner IKKE sætninger der indeholder personnavne.
->- returner IKKE sætninger der indeholder adresser.
->- returner IKKE sætninger der indeholder telefonnumre.
->- returner IKKE sætninger der indeholder email-adresser.
->
->AFLEVERING:
->returner sætningerne i en valid json-liste
+>  
+>VIGTIGE KRAV:  
+>- En sætning er en komplet grammatisk enhed, der giver semantisk mening alene, som er afsluttet med ".", "?" eller "!".  
+>- Opdel teksten i TEKST-segmentet ovenfor i sætninger,  
+>- Sætningerne skal være trimmed for whitespace.  
+>- returner teksten nøjagtigt som den fremstår i kilden, ingen ændringer eller fortolkninger.  
+>- returner IKKE tomme sætninger  
+>- returner IKKE sætninger der kun indeholder whitespace.  
+>- returner IKKE sætninger der indeholder metadata.  
+>- returner IKKE sætninger der indeholder URL'er.  
+>- returner IKKE sætninger der indeholder kontaktoplysninger.  
+>- returner IKKE sætninger der indeholder personnavne.  
+>- returner IKKE sætninger der indeholder adresser.  
+>- returner IKKE sætninger der indeholder telefonnumre.  
+>- returner IKKE sætninger der indeholder email-adresser.  
+>  
+>AFLEVERING:  
+>returner sætningerne i en valid json-liste  
 
 
 **Kaldet til Ollama har følgende *options***:
@@ -166,12 +166,9 @@ Da prompten til Ollama i en tidlig iteration bad om at splitte teksten i "sætni
 Løsningen var at gøre kravene så eksplicitte som muligt i selve prompten — *Prompt-engineering!*
 
 Men selv efter LLM-sætningsopdelingen var teksten stadig fyldt med generelle tekstelementer: hilsner, kontaktoplysninger, rekrutteringsfraser samt sætninger, der var så generiske, at de gik igen på tværs af helt urelaterede jobopslag og dermed var støj i forhold til det krav-svar-signal, som hensigten med systemet er at opfange. Dette resulterede i, at RAG-forespørgsler lige så ofte hentede tekster, der kun matchede på sprogbrug, fraser og vendinger, som tekster, der matchede på beskrivelser af kultur, kompetencer og erfaringer, og prioriteten i dette system er de sidstnævnte kvaliteter.
-Derfor blev 2 renseomgange tilføjet:
-1. **Regelbaseret rensning** — hvor tekstdele fjernes, hvis de matcher en hardcoded blacklist af ord og vendinger.
-2. **Corpus-wide distinctiveness-filtrering** — hvor alle sætninger på tværs af *alle* cases sammenlignes vha. *embedding-similarity* (mere herom i næste afsnit) mod en fast tærskel: en sætning fjernes, hvis den har for høj lighed med andre sætninger.
+Derfor blev regelbaseret rensning indført, hvor tekstdele fjernes, hvis de matcher en hardcoded blacklist af ord og vendinger.
 
-Dette hjalp noget, men selvom meget støj var fjernet fra teksterne, var problematikken med at styre, hvilke meningsbærende kvaliteter i teksten der skal matches på, ikke tilstrækkeligt under kontrol. Man kunne godt rense så meget irrelevant og ensartet tekst væk, at det tilbageværende indhold er så unikt som muligt, men det resulterer i for lidt og for partikulær tekst at matche på.
-Så problematikken bliver også håndteret ved at indeksere tekst med kategorier i en separat fase i pipelinen, Berigelse ([afsnit](#berigelse)).
+Problematikken bliver også håndteret ved at indeksere tekst med kategorier -*tags*- i en separat fase i pipelinen, så der er en mere kontrolleret mekanisme at matche tekster på, se Berigelse ([afsnit](#berigelse)).
 
 
 #### Semantisk Chunking
@@ -217,7 +214,7 @@ En ren embedding-similarity kan ikke skelne mellem "disse tekster ligner hinande
 
 ##### Implementering — tildeling af *tags* til alle tekster
 Ved berigelse får alle tekster i korpusset deres *tags* forudberegnet og gemt i databasen, så retrieval senere kun skal slå dem op. 
-*Tags* er organiseret taksonomisk i en struktur med to niveauer, hvor hvert *tag* hører under en overordnet kategori, f.eks. hører "programmeringssprog" under kategorien "teknisk kompetence". Kategoriniveauet bruges ved tildelingen: ved at vælge de bedste *tags* pr. kategori frem for de bedste *tags* på tværs af alle kategorier, får hver tekst *tags* fra flere kategorier, f.eks. både en fra "Motivation" og en "Teknisk Kompetence", i stedet for at én dominerende kategori fylder alle pladserne. Når to tekster senere sammenlignes, tælles de fælles *tags* på tværs af kategorierne.
+*Tags* er organiseret taksonomisk i en struktur med to niveauer, hvor hvert *tag* hører under en overordnet kategori, f.eks. hører "programmeringssprog" under kategorien "teknisk kompetence". Kategoriniveauet bruges ved tildelingen: ved at vælge de bedste *tags* pr. kategori frem for de bedste *tags* på tværs af alle kategorier, får hver tekst *tags* fra flere overordnet kategorier, f.eks. både en fra "Motivation" og en "Teknisk Kompetence", i stedet for at én dominerende kategori fylder alle pladserne. Når to tekster senere sammenlignes, tælles de fælles *tags* på tværs af kategorierne.
 Inden for hver kategori beholdes de bedst matchende *tags*, men kun hvis ligheden når en vis minimumstærskel, har høj nok vektor-score, ikke alle kategorier er nødvendigvis repræsenteret i en tekst. En tekst kan altså få flere *tags* i samme kategori, eller ingen, hvis intet ligner nok. Vektor-scoren og rangen af forskellige *tags* inden for samme kategori gemmes sammen med *tag*'et. Selve brugen af *tags* som rangering af kandidater, sker først på query-tid og er beskrevet under Retrieval ([afsnit](#retrieval)).
 
 ##### Praktisk erfaring — en udvalgt taksonomi frem for autogenererede *tags*.
@@ -319,27 +316,27 @@ Guardrailen har to sider, der begge er med: et *forbud* ("opfind aldrig teknolog
 >"""
 >Du er en AI-assistent, der hjælper med at skrive en målrettede jobansøgning til det nye jobopslag ved at analysere tidligere jobopslag og tilhørende ansøgningseksempler, og tidligere kravparagraffer med deres tilhørende svarparagraffer.
 >  
->Brug de tidligere eksempler som stil- og argumentationsreference.
->Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget
->eller er dokumenterede relevante kompetencer hos kandidaten.
->Opfind ikke erfaringer.
+>Brug de tidligere eksempler som stil- og argumentationsreference.  
+>Nævn kun konkrete teknologier og værktøjer, som enten fremgår af opslaget  
+>eller er dokumenterede relevante kompetencer hos kandidaten.  
+>Opfind ikke erfaringer.  
 >  
 >Hard requirements:
->- Skriv på samme sprog som det nye jobopslag.
->- Anvend samme tone og sproglige stil som i kildeteksterne.
->- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!
->- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.
->- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.
->- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.
->- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.
->- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.
->- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.
->- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.
->- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'. 
->- Fremhæv dokumenterede styrker neutralt og uden forbehold.
->- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor, når de er relevante og kan dokumenteres i kandidatens kildetekster.
->- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne ikke dokumenterer erfaringen. Opfind aldrig erfaring.
->- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.
+>- Skriv på samme sprog som det nye jobopslag.  
+>- Anvend samme tone og sproglige stil som i kildeteksterne.  
+>- Brug udelukkende konkrete erfaringer, kvaliteter, kompetencer og teknologier - opfind IKKE fakta!  
+>- Prioriter match mod stillingsopslaget og vis tydelig motivation for virksomheden i samme tone og personlighed som kildeteksterne.  
+>- Skriv en overskrift til ansøgningen der matcher jobtitlen og tonen i kildeteksterne.  
+>- Prioritér listeopremsning af kompetencer og erfaringer, når der er mange matches, især hvis jobopslaget også indeholder listeopremsninger.  
+>- Brug IKKE tankestreger (—) i ansøgningsteksten. Brug i stedet kolon, komma eller skriv sætningen om.  
+>- Undgå omstændelige metaformuleringer som 'stillingen kombinerer noget, jeg er motiveret af'. Skriv direkte, fx 'jeg er motiveret af at'.  
+>- Undgå at beskrive min motivation for stillingen og dens opgaver med at citere opgave, produkter, systemer eller vendinger direkte fra opslaget.  
+>- Undgå at spejle stillingsopslaget unødigt med formuleringer som 'det matcher jeres behov'. Skriv i stedet direkte hvad jeg kan bidrage med.  
+>- Undgå selvnedtonende eller kompetencenedskrivende formuleringer som 'jeg kommer ikke med en tung profil' eller 'min primære erfaring er ikke'.   
+>- Fremhæv dokumenterede styrker neutralt og uden forbehold.  
+>- Brug gerne kompetencer, færdigheder og kvaliteter fra matchlisten nedenfor, når de er relevante og kan dokumenteres i kandidatens kildetekster.  
+>- Nævn ikke et match fra listen som kandidatens erfaring, hvis kildeteksterne ikke dokumenterer erfaringen. Opfind aldrig erfaring.  
+>- Nævn dog mit private hobbyprojekt, hvor jeg arbejder med embedding-baseret RAG prompt-engeering, når det er relevant for stillingen.  
 >
 >med "Med venlig hilsen,  
 >Bob"

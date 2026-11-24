@@ -660,7 +660,6 @@ def main() -> None:
     Path(outputfil).write_text(result["few_shot_prompt"] + "\n", encoding="utf-8")
     print(f"Resultat gemt i {outputfil}")
 
-    print(result)
 
 
 if __name__ == "__main__":

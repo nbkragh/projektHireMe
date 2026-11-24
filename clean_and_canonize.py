@@ -1,9 +1,7 @@
 import json, os
 import re
 import sys
-import faiss
 from typing import List
-from sentence_transformers import SentenceTransformer
 """Document Ingestion: rule-based noise removal and canonicalization (case_id assignment)."""
 
 remove_phrases = [
@@ -42,13 +40,12 @@ remove_phrases = [
     r"(R|r)esumé",
     r"(J|j)ob application",
     r"(A|a)pplication form",
-    r"(S|s)enior",
     r"(R|r)eference letter",
     r"(R|r)ecommendation letter",
     r"(D|d)u kan læse mere"
 ]
 
-def cleanup(cases_json: List[dict], embeddingmodel: SentenceTransformer):
+def cleanup(cases_json: List[dict]):
     # noise removal, fjerner generisk tekst, som ofte optræder i jobopslag og ansøgninger fra casens tekst,
     # både i hele jobopslagsteksten og  ansøgningsteksten,
     # samt de segmenterede sætninger, der senere skal samles til paragraffer.
@@ -68,47 +65,8 @@ def cleanup(cases_json: List[dict], embeddingmodel: SentenceTransformer):
         case_json["job_sentences"] = cleanup_sentences(case_json.get("job_sentences"))
         case_json["app_sentences"] = cleanup_sentences(case_json.get("app_sentences"))
         for expr in remove_phrases:
-            case_json["job_text"] = re.sub(expr, " [] ", case_json.get("job_text"))
-            case_json["app_text"] = re.sub(expr, " [] ", case_json.get("app_text"))
-
-
-
-    alle_sætninger = []
-    flatID_to_caseID_mapping = [] #mapping fra flat array indeksering til json struktur,
-    for case_id, case_json in enumerate(cases_json):
-        for i, sentence in enumerate(case_json.get("job_sentences")):
-            alle_sætninger.append(sentence)
-            flatID_to_caseID_mapping.append({"case_id": case_id, "origin": "job_sentences", "sentence_id": i})
-    #print("length of sentences:", len(alle_sætninger))
-    #print("length of flatID_to_caseID_mapping:", len(flatID_to_caseID_mapping))
-
-    textembeddings = embeddingmodel.encode(alle_sætninger, convert_to_numpy=True).astype("float32")
-
-    faiss.normalize_L2(textembeddings)
-    faissindex = faiss.IndexFlatIP(textembeddings.shape[1])
-    faissindex.add(textembeddings)
-
-    sim_threshold=0.85
-    k = 50  # k er antal nearest neighbors der skal returneres, 50 -> søg bredt for at fange tværgående matches
-    distances, neighbours_ids = faissindex.search(textembeddings, k)
-    num_cases = len(cases_json)
-    #gennemgår alle sætningerne
-    for i in range(len(alle_sætninger)):
-        # for hver sætning gennemgå de nærmeste (k) naboer (nearest neighbors), samt afstanden, som Faiss har beregnet for dem
-        # og tæl hvor mange af de nærmeste naboer der har en afstand over sim_threshold - der ligner hinanden meget
-        matched_cases = set()
-        for distance, neighbour_id in zip(distances[i], neighbours_ids[i]):
-            if distance >= sim_threshold:
-                matched_cases.add(alle_sætninger[neighbour_id])
-        distinctiveness = 1.0 - (len(matched_cases) / num_cases)
-        if distinctiveness < 0.9:
-            #print(f"Distinctiveness: {distinctiveness}, matches: {len(matched_cases)}, Index: {i}, sentence: {alle_sætninger[i]},  matched_cases: {matched_cases}")
-            case_id = flatID_to_caseID_mapping[i]["case_id"]
-            origin = flatID_to_caseID_mapping[i]["origin"]
-            sentence_id = flatID_to_caseID_mapping[i]["sentence_id"]
-            #print(f"Cleaned sentence \"{cases_json[case_id][origin][sentence_id]}\" from case_id {case_id}, origin {origin}")
-
-            del cases_json[case_id][origin][sentence_id]
+            case_json["job_text"] = re.sub(expr, " ", case_json.get("job_text"))
+            case_json["app_text"] = re.sub(expr, " ", case_json.get("app_text"))
 
     return cases_json
 
@@ -137,18 +95,8 @@ def main():
                 print(f"Error: '{import_file}' is not a valid JSON file.")
                 raise SystemExit(1)
 
-    print("Starting similarity search")
-    print("loading sentence transformer library")
-    embeddingmodelLocation = "./"+str(os.getenv("EMBEDDING_MODEL"))
-    print(f"loading embedding model: {embeddingmodelLocation}")
-
-    embeddingmodel = SentenceTransformer(embeddingmodelLocation)
-    if embeddingmodel is None:
-        print("Error: Failed to load embedding model.")
-        raise SystemExit(1)
-
     print("Starting cleanup")
-    export_json = cleanup(existing_cases_json, embeddingmodel)
+    export_json = cleanup(existing_cases_json)
     with open(export_file, "w", encoding="utf-8") as export_file_content:
         json.dump(export_json, export_file_content, ensure_ascii=False, indent=4)
 
